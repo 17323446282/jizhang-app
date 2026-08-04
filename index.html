@@ -106,10 +106,20 @@ body {
   flex: 1;
   min-height: 100vh;
   padding: 24px 32px;
-  max-width: 1200px;
+  max-width: 1600px;
 }
 .page { display: none; }
 .page.active { display: block; animation: fadeIn 0.25s ease; }
+
+/* ===== Overview two-column layout (desktop) ===== */
+.overview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(340px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.overview-left { min-width: 0; }
+.overview-right { min-width: 0; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ===== Page Header ===== */
@@ -621,6 +631,17 @@ body {
   outline: none;
   background: var(--bg-card);
 }
+.month-select {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  outline: none;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: 40px;
+}
 
 /* ===== Modal / Dialog ===== */
 .modal-overlay {
@@ -740,6 +761,8 @@ body {
   }
   .mobile-nav { display: flex; }
   .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .overview-layout { grid-template-columns: 1fr; gap: 0; }
+  .overview-right .card { position: static; }
   .progress-section { padding: 18px 14px; }
   .savings-grid { grid-template-columns: 1fr; gap: 0; }
   .savings-col:first-child { border-right: none; border-bottom: 1px dashed rgba(212,160,165,0.35); padding-bottom: 12px; }
@@ -876,39 +899,45 @@ input[type="number"] { -moz-appearance: textfield; }
       <span id="dataWarningText"></span>
     </div>
 
-    <!-- Savings Progress Section -->
-    <div class="progress-section" id="progressSection">
-      <div class="savings-title">📊 本年度储蓄计划</div>
-      <div class="savings-bar-wrap" id="savingsBarWrap"></div>
-      <div class="savings-grid" id="savingsGrid"></div>
-    </div>
+    <div class="overview-layout">
+      <div class="overview-left">
+        <!-- Savings Progress Section -->
+        <div class="progress-section" id="progressSection">
+          <div class="savings-title">📊 本年度储蓄计划</div>
+          <div class="savings-bar-wrap" id="savingsBarWrap"></div>
+          <div class="savings-grid" id="savingsGrid"></div>
+        </div>
 
-    <!-- Quick Metrics -->
-    <div class="metrics-grid" id="quickMetrics"></div>
+        <!-- Quick Metrics -->
+        <div class="metrics-grid" id="quickMetrics"></div>
 
-    <!-- Asset Snapshot -->
-    <div class="card">
-      <div class="card-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>
-        资产快照（手动填写，每月更新一次）
+        <!-- Asset Snapshot -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>
+            资产快照（手动填写，每月更新一次）
+          </div>
+          <div class="asset-grid" id="assetGrid"></div>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:12px;">
+            <span style="font-size:13px;color:var(--text-secondary)">净资产总额：</span>
+            <span style="font-size:22px;font-weight:500;color:var(--color-primary-dark)" id="netWorthTotal">¥0</span>
+          </div>
+        </div>
       </div>
-      <div class="asset-grid" id="assetGrid"></div>
-      <div style="margin-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:12px;">
-        <span style="font-size:13px;color:var(--text-secondary)">净资产总额：</span>
-        <span style="font-size:22px;font-weight:500;color:var(--color-primary-dark)" id="netWorthTotal">¥0</span>
-      </div>
-    </div>
 
-    <!-- Annual Budget Plan -->
-    <div class="card">
-      <div class="card-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        本年度预算计划
+      <!-- Annual Budget Plan (right column) -->
+      <div class="overview-right">
+        <div class="card" style="position:sticky;top:24px;">
+          <div class="card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            本年度预算计划
+          </div>
+          <table class="budget-table" id="budgetTable">
+            <thead><tr><th>项目</th><th>月均（¥）</th><th>年总计（¥）</th></tr></thead>
+            <tbody id="budgetBody"></tbody>
+          </table>
+        </div>
       </div>
-      <table class="budget-table" id="budgetTable">
-        <thead><tr><th>项目</th><th>月均（¥）</th><th>年总计（¥）</th></tr></thead>
-        <tbody id="budgetBody"></tbody>
-      </table>
     </div>
   </div>
 
@@ -1012,10 +1041,11 @@ input[type="number"] { -moz-appearance: textfield; }
     <div class="page-header">
       <h2 id="monthlyTitle">月度收支</h2>
       <div class="date-picker-row">
-        <label>记账周期起止：</label>
-        <input type="date" id="monthStart" onchange="updateMonthlyView()">
-        <span style="color:var(--text-muted)">至</span>
-        <input type="date" id="monthEnd" onchange="updateMonthlyView()">
+        <label>查看月份：</label>
+        <select id="selYear" class="month-select" onchange="updateMonthlyView()"></select>
+        <span style="color:var(--text-muted)">年</span>
+        <select id="selMonth" class="month-select" onchange="updateMonthlyView()"></select>
+        <span style="color:var(--text-muted)">月</span>
       </div>
     </div>
 
@@ -1378,6 +1408,22 @@ function getCycleRange(refDate) {
   const startDate = new Date(startY, startM, startDay);
   const endDate = new Date(endY, endM, startDay - 1);
   return { start: formatDateISO(startDate), end: formatDateISO(endDate), startDate, endDate };
+}
+
+// Build accounting-period range for a chosen year + month (1-indexed)
+// e.g. July 2026 with startDay=11 → 2026-07-11 ~ 2026-08-10
+function getRangeForMonthYear(year, month1) {
+  const startDay = state.cycleStartDay || 11;
+  const startM = month1 - 1;
+  const startDate = new Date(year, startM, startDay);
+  const endDate = new Date(year, startM + 1, startDay - 1);
+  return {
+    start: formatDateISO(startDate),
+    end: formatDateISO(endDate),
+    startDate, endDate,
+    labelYear: year,
+    labelMonth: month1
+  };
 }
 
 function getBillsInRange(start, end) {
@@ -2035,10 +2081,24 @@ function guessCategory(text, type) {
 // ============================================================
 
 function renderMonthly() {
-  const range = getCycleRange();
-  document.getElementById('monthStart').value = range.start;
-  document.getElementById('monthEnd').value = range.end;
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const selYear = document.getElementById('selYear');
+  const selMonth = document.getElementById('selMonth');
+  if (!selYear.options.length) {
+    for (let y = curYear - 2; y <= curYear + 3; y++) {
+      const o = document.createElement('option'); o.value = y; o.textContent = y; selYear.appendChild(o);
+    }
+    for (let m = 1; m <= 12; m++) {
+      const o = document.createElement('option'); o.value = m; o.textContent = m; selMonth.appendChild(o);
+    }
+  }
+  // default to current accounting-period month
+  const cyc = getCycleRange();
+  selYear.value = cyc.startDate.getFullYear();
+  selMonth.value = cyc.startDate.getMonth() + 1;
 
+  const range = getRangeForMonthYear(parseInt(selYear.value, 10), parseInt(selMonth.value, 10));
   updateMonthlyHeader(range);
   updateMonthlyMetrics(range);
   renderMonthlyCharts(range);
@@ -2047,10 +2107,10 @@ function renderMonthly() {
 }
 
 function updateMonthlyView() {
-  const start = document.getElementById('monthStart').value;
-  const end = document.getElementById('monthEnd').value;
-  if (!start || !end) return;
-  const range = { start, end, startDate: new Date(start+'T00:00:00'), endDate: new Date(end+'T00:00:00') };
+  const selYear = document.getElementById('selYear');
+  const selMonth = document.getElementById('selMonth');
+  if (!selYear.value || !selMonth.value) return;
+  const range = getRangeForMonthYear(parseInt(selYear.value, 10), parseInt(selMonth.value, 10));
   updateMonthlyHeader(range);
   updateMonthlyMetrics(range);
   renderMonthlyCharts(range);
@@ -2060,7 +2120,7 @@ function updateMonthlyView() {
 
 function updateMonthlyHeader(range) {
   const title = document.getElementById('monthlyTitle');
-  title.textContent = `${range.startDate.getMonth()+1}月收支情况（${formatDisplayDate(range.start)} — ${formatDisplayDate(range.end)}）`;
+  title.textContent = `${range.labelYear}年${range.labelMonth}月收支情况`;
 }
 
 function updateMonthlyMetrics(range) {
