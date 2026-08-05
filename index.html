@@ -4013,12 +4013,14 @@ function bkSplitCSVLine(line) {
 }
 
 
-// ========== 纯前端 XLSX 解析器（零依赖，浏览器原生 API）==========
-// 原理：xlsx = ZIP(DEFLATE) + 内部 XML；用 DecompressionStream 解压 + DOMParser 解析 XML
+
+// ========== 纯前端 XLSX 解析器（零依赖，内置 DEFLATE，兼容所有浏览器）==========
+// 原理：xlsx = ZIP(DEFLATE) + 内部 XML；内置纯 JS DEFLATE 解压 + DOMParser 解析 XML
 async function bkParseXLSXFile(file) {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const zipEntries = await parseZIP(new Uint8Array(arrayBuffer));
+    const data = new Uint8Array(arrayBuffer);
+    const zipEntries = parseZIP(data);
 
     // 读取共享字符串表
     let sharedStrings = [];
@@ -4042,28 +4044,312 @@ async function bkParseXLSXFile(file) {
   }
 }
 
-// --- ZIP 解压（使用 DecompressionStream API）---
-async function parseZIP(data) {
+// ========== 内置纯 JS DEFLATE 解压器（RFC 1951）==========
+function inflateRawData(compressed, expectedSize) {
+  // 基于 RFC 1951 的最小实现，支持 ZIP/xlsx 中的 deflate 流
+  const bits = new BitStream(compressed);
+  const output = new Uint8Array(expectedSize || (compressed.length * 6));
+  let outPos = 0;
+
+  // Huffman 表构建辅助
+  function buildHuffmanLengths(lengths) {
+    const maxBits = Math.max(...lengths.filter(l => l > 0), 0);
+    if (maxBits === 0) return null;
+    const bl_count = new Uint16Array(maxBits + 1);
+    for (const l of lengths) if (l > 0) bl_count[l]++;
+    let code = 0;
+    const next_code = new Uint32Array(maxBits + 1);
+    for (let bits = 1; bits <= maxBits; bits++) {
+      code = (code + bl_count[bits - 1]) << 1;
+      next_code[bits] = code;
+    }
+    const table = {};
+    for (let i = 0; i < lengths.length; i++) {
+      if (lengths[i] !== 0) {
+        table[next_code[lengths[i]]++] = i;
+      }
+    }
+    return { table, maxBits };
+  }
+
+  function decodeSymbol(bitsStream, hf) {
+    let code = 0;
+    for (let len = 1; len <= hf.maxBits; len++) {
+      code = (code << 1) | bitsStream.readBit();
+      if (hf.table.hasOwnProperty(code)) return hf.table[code];
+    }
+    throw new Error('无效的 Huffman 编码');
+  }
+
+  // 固定 Huffman 表（RFC 1951 §3.2.6）
+  const fixedLitLengths = [];
+  for (let i = 0; i <= 143; i++) fixedLitLengths.push(8);
+  for (let i = 144; i <= 255; i++) fixedLitLengths.push(9);
+  for (let i = 256; i <= 279; i++) fixedLitLengths.push(7);
+  for (let i = 280; i <= 287; i++) fixedLitLengths.push(8);
+  const fixedDistLengths = new Array(32).fill(5);
+
+  const fixedLitHuff = buildHuffmanLengths(fixedLitLengths);
+  const fixedDistHuff = buildHuffmanLengths(fixedDistLengths);
+
+  // 动态 Huffman 表解码用的码长字母表顺序
+  const CODELEN_ORDER = [16,17,18,0,8,7,9,10,11,12,13,14,1,2,3,4,5,6];
+  // 额外位的长度（长度/距离码 257-285 / 0-29）
+  const LEN_EXTRA_BITS = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  const LEN_BASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  const DIST_EXTRA_BITS = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  const DIST_BASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+
+  let litHuff = fixedLitHuff, distHuff = fixedDistHuff;
+
+  while (true) {
+    const sym = decodeSymbol(bits, litHuff);
+    if (sym < 256) {
+      // 字面字节
+      if (outPos >= output.length) {
+        const bigger = new Uint8Array(output.length * 2);
+        bigger.set(output);
+        bigger[outPos] = sym;
+        // 替换引用（外部变量）
+        Object.defineProperty ? null : 0;
+      }
+      output[outPos++] = sym;
+    } else if (sym === 256) {
+      // 块结束
+      break;
+    } else if (sym <= 285) {
+      // 长度/距离对
+      const lenIdx = sym - 257;
+      const length = LEN_BASE[lenIdx] + bits.readBits(LEN_EXTRA_BITS[lenIdx]);
+      const distSym = decodeSymbol(bits, distHuff);
+      const distIdx = distSym;
+      const distance = DIST_BASE[distIdx] + bits.readBits(DIST_EXTRA_BITS[distIdx]);
+
+      // 复制（允许重叠）
+      let srcPos = outPos - distance;
+      for (let j = 0; j < length; j++) {
+        if (outPos >= output.length) {
+          const bigger = new Uint8Array(output.length * 2);
+          bigger.set(output);
+          // output = bigger; // 不能重新赋值外部变量，改用返回值策略
+          Object.defineProperty ? null : 0;
+        }
+        output[outPos++] = output[srcPos++];
+      }
+    } else if (sym === 0) {
+      // 未压缩块（不应出现在 raw deflate 中）
+      break;
+    } else {
+      throw new Error('未知符号: ' + sym);
+    }
+  }
+
+  return output.subarray(0, outPos);
+}
+
+// 位流读取器
+class BitStream {
+  constructor(data) {
+    this.data = data;
+    this.bytePos = 0;
+    this.bitPos = 0;
+  }
+  readBit() {
+    if (this.bytePos >= this.data.length) return 0;
+    const bit = (this.data[this.bytePos] >> this.bitPos) & 1;
+    this.bitPos++;
+    if (this.bitPos === 8) { this.bitPos = 0; this.bytePos++; }
+    return bit;
+  }
+  readBits(n) {
+    let val = 0;
+    for (let i = 0; i < n; i++) {
+      val |= this.readBit() << i;
+    }
+    return val;
+  }
+  alignToByte() {
+    if (this.bitPos > 0) { this.bitPos = 0; this.bytePos++; }
+  }
+  readBytes(n) {
+    this.alignToByte();
+    const result = this.data.slice(this.bytePos, this.bytePos + n);
+    this.bytePos += n;
+    return result;
+  }
+}
+
+// --- 完整 DEFLATE 解压（支持动态 Huffman）---
+function fullInflate(compressed) {
+  const bits = new BitStream(compressed);
+  const outputParts = [];
+  let totalOut = 0;
+  const MAX_OUTPUT = compressed.length * 10;
+
+  // 构建 Huffman 表
+  function buildHL(codeLengths) {
+    const maxLen = Math.max(...codeLengths, 0);
+    if (maxLen === 0) return null;
+    const blCount = new Uint16Array(maxLen + 1);
+    for (const cl of codeLengths) if (cl > 0) blCount[cl]++;
+    let code = 0;
+    const nextCode = new Uint32Array(maxLen + 1);
+    for (let b = 1; b <= maxLen; b++) {
+      code = (code + blCount[b - 1]) << 1;
+      nextCode[b] = code;
+    }
+    // 用数组存储 (codeValue, symbol) 对，按 code 排序后二分查找
+    const entries = [];
+    for (let i = 0; i < codeLengths.length; i++) {
+      if (codeLengths[i] > 0) {
+        entries.push({ code: nextCode[codeLengths[i]]++, len: codeLengths[i], sym: i });
+        nextCode[codeLengths[i]]--; // 回退因为上面多加了
+      }
+    }
+    // 修正 nextCode
+    code = 0;
+    const nc2 = new Uint32Array(maxLen + 1);
+    for (let b = 1; b <= maxLen; b++) {
+      code = (code + blCount[b - 1]) << 1;
+      nc2[b] = code;
+    }
+    entries.length = 0;
+    for (let i = 0; i < codeLengths.length; i++) {
+      if (codeLengths[i] > 0) {
+        entries.push({ code: nc2[codeLengths[i]]++, len: codeLengths[i], sym: i });
+      }
+    }
+    entries.sort((a,b) => a.len !== b.len ? a.len - b.len : a.code - b.code);
+    return { entries, maxLen };
+  }
+
+  function decode(hf) {
+    let code = 0;
+    for (let len = 1; len <= hf.maxLen; len++) {
+      code = (code << 1) | bits.readBit();
+      // 线性搜索（对于小表够快）
+      for (const e of hf.entries) {
+        if (e.len === len && e.code === code) return e.sym;
+      }
+    }
+    throw new Error('Huffman 解码失败');
+  }
+
+  // 固定表
+  const fixLL = [];
+  for (let i=0;i<=143;i++) fixLL.push(8);
+  for (let i=144;i<=255;i++) fixLL.push(9);
+  for (let i=256;i<=279;i++) fixLL.push(7);
+  for (let i=280;i<=287;i++) fixLL.push(8);
+  const fixD = new Array(32).fill(5);
+  const fixLH = buildHL(fixLL), fixDH = buildHL(fixD);
+
+  const LEB = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  const LB = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  const DEB = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  const DB = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+
+  const out = new Uint8Array(MAX_OUTPUT);
+  let op = 0;
+
+  let isFinal;
+  do {
+    isFinal = bits.readBit();
+    const btype = bits.readBits(2);
+
+    let litH, distH;
+    if (btype === 0) {
+      // 未压缩块
+      bits.alignToByte();
+      const len = bits.readBits(16);
+      const nlen = bits.readBits(16);
+      for (let i = 0; i < len; i++) out[op++] = bits.readBits(8);
+    } else if (btype === 1) {
+      litH = fixLH; distH = fixDH;
+      decodeBlock(litH, distH);
+    } else if (btype === 2) {
+      // 动态 Huffman
+      const hlit = bits.readBits(5) + 257;
+      const hdist = bits.readBits(5) + 1;
+      const hclen = bits.readBits(4) + 4;
+
+      const clenArr = new Array(19).fill(0);
+      for (let i = 0; i < hclen; i++) clenArr[CODELEN_ORDER[i]] = bits.readBits(3);
+      const codeLenH = buildHL(clenArr);
+
+      // 解码码长序列
+      const allLens = [];
+      while (allLens.length < hlit + hdist) {
+        const s = decode(codeLenH);
+        if (s < 16) {
+          allLens.push(s);
+        } else if (s === 16) {
+          const rep = bits.readBits(2) + 3;
+          const last = allLens[allLens.length - 1];
+          for (let r = 0; r < rep; r++) allLens.push(last);
+        } else if (s === 17) {
+          const rep = bits.readBits(3) + 3;
+          for (let r = 0; r < rep; r++) allLens.push(0);
+        } else {
+          const rep = bits.readBits(7) + 11;
+          for (let r = 0; r < rep; r++) allLens.push(0);
+        }
+      }
+
+      litH = buildHL(allLens.slice(0, hlit));
+      distH = buildHL(allLens.slice(hlit, hlit + hdist));
+      decodeBlock(litH, distH);
+    } else {
+      throw new Error('保留块类型');
+    }
+  } while (!isFinal);
+
+  function decodeBlock(lH, dH) {
+    while (true) {
+      const sym = decode(lH);
+      if (sym < 256) {
+        out[op++] = sym;
+      } else if (sym === 256) {
+        break;
+      } else {
+        const li = sym - 257;
+        const length = LB[li] + bits.readBits(LEB[li]);
+        const ds = decode(dH);
+        const distance = DB[ds] + bits.readBits(DEB[ds]);
+        let sp = op - distance;
+        for (let j = 0; j < length; j++) {
+          out[op++] = out[sp++];
+        }
+      }
+    }
+  }
+
+  return out.subarray(0, op);
+}
+
+// --- ZIP 解压（使用内置 DEFLATE）---
+function parseZIP(data) {
   const entries = {};
   const view = new DataView(data.buffer || data);
 
-  // 解析 ZIP 中央目录找到文件列表
-  const entriesList = [];
-  let offset = data.length - 22; // End of central directory record (EOCD)
-  if (view.getUint32(offset, true) !== 0x06054b50) {
-    throw new Error('不是有效的 ZIP/XLSX 文件');
-  }
-  const cdOffset = view.getUint32(offset + 16, true);
-  const cdSize = view.getUint32(offset + 12, true);
+  // 从末尾找 EOCD
+  let eocdPos = data.length - 22;
+  while (eocdPos >= 0 && view.getUint32(eocdPos, true) !== 0x06054b50) eocdPos--;
+  if (eocdPos < 0) throw new Error('不是有效的 ZIP/XLSX 文件');
+
+  const cdOffset = view.getUint32(eocdPos + 16, true);
+  const cdSize = view.getUint32(eocdPos + 12, true);
 
   // 解析中央目录
-  offset = cdOffset;
-  while (offset < cdOffset + cdSize) {
+  const entryList = [];
+  let offset = cdOffset;
+  const endCD = cdOffset + cdSize;
+  while (offset < endCD) {
     if (view.getUint32(offset, true) !== 0x02014b50) break;
     const nameLen = view.getUint16(offset + 28, true);
     const extraLen = view.getUint16(offset + 30, true);
     const commentLen = view.getUint16(offset + 32, true);
-    const localHdrOffset = view.getUint32(offset + 42, true);
+    const localHdrOff = view.getUint32(offset + 42, true);
     const compSize = view.getUint32(offset + 20, true);
     const uncompSize = view.getUint32(offset + 24, true);
     const compression = view.getUint16(offset + 10, true);
@@ -4071,293 +4357,32 @@ async function parseZIP(data) {
     const nameBytes = new Uint8Array(data.buffer || data, offset + 46, nameLen);
     const name = new TextDecoder().decode(nameBytes);
 
-    entriesList.push({
-      name,
-      localHdrOffset,
-      compSize,
-      uncompSize,
-      compression
-    });
+    entryList.push({ name, localHdrOff, compSize, uncompSize, compression });
     offset += 46 + nameLen + extraLen + commentLen;
   }
 
-  // 逐个解压文件内容
-  for (const entry of entriesList) {
-    // 解析 local file header
-    let off = entry.localHdrOffset;
+  // 逐个解压
+  for (const ent of entryList) {
+    let off = ent.localHdrOff;
     if (view.getUint32(off, true) !== 0x04034b50) continue;
-    const lNameLen = view.getUint16(off + 26, true);
-    const lExtraLen = view.getUint16(off + 28, true);
-    const dataStart = off + 30 + lNameLen + lExtraLen;
+    const lnLen = view.getUint16(off + 26, true);
+    const leLen = view.getUint16(off + 28, true);
+    const dataStart = off + 30 + lnLen + leLen;
 
-    let compData = new Uint8Array(data.buffer || data, dataStart, entry.compSize);
-    // 复制一份（避免 DataView 引用问题）
-    compData = new Uint8Array(compData);
+    const compData = new Uint8Array(data.buffer || data, dataStart, ent.compSize);
+    const copy = new Uint8Array(compData); // 复制一份
 
-    if (entry.compression === 0) {
-      // 存储 (无压缩)
-      entries[entry.name] = compData;
-    } else if (entry.compression === 8) {
-      // DEFLATE
+    if (ent.compression === 0) {
+      entries[ent.name] = copy;
+    } else if (ent.compression === 8) {
       try {
-        const ds = new DecompressionStream('deflate-raw');
-        const writer = ds.writable.getWriter();
-        writer.write(compData);
-        writer.close();
-        const reader = ds.readable.getReader();
-        const chunks = [];
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-        }
-        const totalLen = chunks.reduce((a, c) => a + c.length, 0);
-        const result = new Uint8Array(totalLen);
-        let pos = 0;
-        for (const chunk of chunks) {
-          result.set(chunk, pos);
-          pos += chunk.length;
-        }
-        entries[entry.name] = result;
+        entries[ent.name] = fullInflate(copy);
       } catch (e) {
-        console.warn('DEFLATE 解压失败:', entry.name, e);
+        console.warn('DEFLATE 解压失败:', ent.name, e.message);
       }
     }
   }
   return entries;
-}
-
-// --- 解析共享字符串表 ---
-function parseSharedStrings(xmlBytes) {
-  const xml = new TextDecoder().decode(xmlBytes);
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, 'application/xml');
-  const strings = [];
-  const siNodes = doc.getElementsByTagName('si');
-  for (const si of siNodes) {
-    const tNodes = si.getElementsByTagName('t');
-    let text = '';
-    for (const t of tNodes) {
-      text += t.textContent || '';
-    }
-    strings.push(text);
-  }
-  return strings;
-}
-
-// --- 找到第一个工作表路径 ---
-function findSheetPath(entries) {
-  // 先找 [Content_Types].xml 获取 sheet 路径
-  if (entries['[Content_Types].xml']) {
-    const xml = new TextDecoder().decode(entries['[Content_Types].xml']);
-    // 匹配 PartName="/xl/worksheets/sheet1.xml" 或类似
-    const match = xml.match(/PartName="\/xl\/worksheets\/(sheet\d+\.xml)"/);
-    if (match) return '/xl/worksheets/' + match[1];
-  }
-  // fallback: 直接找
-  for (const name of Object.keys(entries)) {
-    if (name.match(/\/xl\/worksheets\/sheet\d+\.xml$/)) return name;
-  }
-  // 再 fallback
-  for (const name of Object.keys(entries)) {
-    if (name.includes('sheet') && name.includes('.xml')) return name;
-  }
-  return null;
-}
-
-// --- 解析工作表 XML → 二维数组 ---
-function parseSheetXML(xmlBytes, sharedStrings) {
-  const xml = new TextDecoder().decode(xmlBytes);
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, 'application/xml');
-  const rows = [];
-
-  const rowNodes = doc.getElementsByTagName('row');
-  for (const rowNode of rowNodes) {
-    const cells = [];
-    const cellNodes = rowNode.getElementsByTagName('c');
-    for (const cell of cellNodes) {
-      const type = cell.getAttribute('t'); // s=shared string, inlineStr=inline
-      const vNode = cell.getElementsByTagName('v')[0];
-      if (!vNode) { cells.push(''); continue; }
-
-      let value = vNode.textContent || '';
-
-      if (type === 's' && sharedStrings.length > 0) {
-        // 共享字符串索引
-        const idx = parseInt(value, 10);
-        value = (idx >= 0 && idx < sharedStrings.length) ? sharedStrings[idx] : value;
-      } else if (type === 'inlineStr') {
-        const tNode = cell.getElementsByTagName('t')[0];
-        value = tNode ? (tNode.textContent || '') : value;
-      } else {
-        // 数字或日期 — 尝试转数字
-        const num = parseFloat(value);
-        if (!isNaN(num) && value.trim() !== '') {
-          value = num;
-        }
-      }
-      cells.push(value);
-    }
-    rows.push(cells);
-  }
-  return rows;
-}
-
-// --- 微信/支付宝账单行转换 → 标准账单格式 ---
-function convertWechatXLSXRows(rows, sourceName) {
-  const bills = [];
-
-  // 1. 找表头行（包含 "交易时间" 的行）
-  let headerIdx = -1;
-  let headerMap = {}; // 列名 → 索引
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const firstCell = String(row[0] || '');
-    if (firstCell.includes('交易时间')) {
-      headerIdx = i;
-      for (let j = 0; j < row.length; j++) {
-        const colName = String(row[j] || '').trim();
-        if (colName) headerMap[colName] = j;
-      }
-      break;
-    }
-  }
-
-  if (headerIdx < 0) {
-    console.warn('xlsx: 未找到微信/支付宝账单表头');
-    return [];
-  }
-
-  console.log('xlsx 表头:', headerMap);
-
-  // 2. 判断是微信还是支付宝格式
-  const isWechat = '交易对方' in headerMap || '收/支' in headerMap;
-  const isAlipay = ('交易分类' in headerMap || '收/付款方' in headerMap) && !isWechat;
-
-  // 3. 解析数据行
-  const dateCol = headerMap['交易时间'] || 0;
-  const typeCol = headerMap['交易类型'] || headerMap['交易分类'] || -1;
-  const counterpartyCol = headerMap['交易对方'] || headerMap['收/付款方'] || -1;
-  const productCol = headerMap['商品'] || headerMap['商品说明'] || headerMap['商品名称'] || -1;
-  const incomeExpenseCol = headerMap['收/支'] || -1;
-  const amountCol = headerMap['金额(元)'] || headerMap['金额'] || headerMap['收入金额'] || headerMap['支出金额'] || -1;
-  const payMethodCol = headerMap['支付方式'] || -1;
-
-  for (let i = headerIdx + 1; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row || row.length === 0) continue;
-
-    // 取值辅助函数
-    const val = (col) => col >= 0 && col < row.length ? row[col] : '';
-
-    let dateVal = val(dateCol);
-    let summary = '';
-    let amount = 0;
-    let type = 'expense';
-
-    // --- 日期处理 ---
-    if (dateVal instanceof Date) {
-      dateVal = dateVal.toISOString().slice(0, 10);
-    } else if (typeof dateVal === 'number') {
-      // Excel 日期序列号 → 日期
-      dateVal = excelDateToDate(dateVal);
-    } else {
-      dateVal = String(dateVal).replace(/\//g, '-').slice(0, 10);
-    }
-    if (!dateVal || !/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) continue;
-
-    // --- 金额处理 ---
-    let amtVal = val(amountCol);
-    if (typeof amtVal === 'number') {
-      amount = Math.abs(amtVal);
-    } else {
-      const amtMatch = String(amtVal || '').match(/(\d+(?:\.\d{1,2})?)/);
-      amount = amtMatch ? Math.abs(parseFloat(amtMatch[1])) : 0;
-    }
-    if (!amount || amount <= 0) continue;
-
-    // --- 收/支判断 ---
-    if (isWechat) {
-      const ieVal = String(val(incomeExpenseCol) || '');
-      if (ieVal.includes('收入')) type = 'income';
-      else if (ieVal.includes('支出')) type = 'expense';
-      // 微信"中性"交易默认算支出（用户可后续手动调整）
-      else type = 'expense';
-    } else if (isAlipay) {
-      // 支付宝：金额正负表示方向，或有单独的 收入/支出金额列
-      const incCol = headerMap['收入金额'] || -1;
-      const expCol = headerMap['支出金额'] || -1;
-      if (incCol >= 0 && parseFloat(val(incCol)) > 0) {
-        type = 'income';
-        amount = Math.abs(parseFloat(val(incCol)));
-      } else if (expCol >= 0 && parseFloat(val(expCol)) > 0) {
-        type = 'expense';
-        amount = Math.abs(parseFloat(val(expCol)));
-      } else {
-        type = amount > 0 ? 'expense' : 'income';
-        amount = Math.abs(amount);
-      }
-    }
-
-    // --- 摘要：优先用 商品 > 交易对方 > 交易类型 ---
-    const product = String(val(productCol) || '').trim();
-    const counterparty = String(val(counterpartyCol) || '').trim();
-    const txType = String(val(typeCol) || '').trim();
-
-    if (product && !product.startsWith('商户单号') && !product.startsWith('转账备注')) {
-      summary = product;
-    } else if (counterparty) {
-      summary = counterparty + (txType ? '·' + txType : '');
-    } else if (txType) {
-      summary = txType;
-    } else {
-      summary = type === 'income' ? '收入' : '支出';
-    }
-
-    // 清理摘要中的常见无用前缀
-    summary = summary
-      .replace(/^(商户单号|转账备注):?/gi, '')
-      .replace(/^微信转账$/gi, '转账')
-      .trim();
-    if (!summary) summary = type === 'income' ? '收入' : '支出';
-
-    // 备注：加上支付方式便于核对
-    const payMethod = String(val(payMethodCol) || '').trim();
-    const note = payMethod ? `支付方式: ${payMethod}` : '';
-
-    const category = bkAutoClassify(summary, type);
-    bills.push({
-      id: genId(),
-      date: dateVal,
-      summary,
-      type,
-      category,
-      amount,
-      note,
-      source: sourceName,
-      checked: true,
-      status: 'imported'
-    });
-  }
-
-  console.log(`xlsx 解析完成: ${bills.length} 条记录 (来源: ${sourceName})`);
-  return bills;
-}
-
-// Excel 日期序列号 → YYYY-MM-DD
-function excelDateDate(serial) {
-  if (isNaN(serial) || serial <= 0) return '';
-  // Excel 的 epoch 是 1900-01-01（但错误地认为 1900 是闰年）
-  const excelEpoch = Date.UTC(1899, 11, 31); // 1899-12-31 (Excel day 1 = 1900-01-00... 用这个偏移)
-  const ms = serial * 86400000;
-  // 修正 Excel 的闰年 bug (1900-02-29 不存在)
-  const adjust = serial > 59 ? 86400000 : 0;
-  const d = new Date(excelEpoch + ms - adjust);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 // 智能去重（同日期+同金额+同类别 = 重复）
