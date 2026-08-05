@@ -590,13 +590,19 @@ body {
 .liquid-col-title {
   display: grid;
   grid-template-columns: 2fr 1.5fr 1.5fr;
-  text-align: center;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   padding: 8px 0;
   border-bottom: 2px solid var(--border-color);
   margin-bottom: 4px;
+}
+.liquid-col-title span:first-child {
+  text-align: center;
+}
+.liquid-col-title span:nth-child(2),
+.liquid-col-title span:nth-child(3) {
+  text-align: center;
 }
 .liquid-row {
   display: grid;
@@ -609,6 +615,7 @@ body {
   font-size: 13.5px;
   color: var(--text-primary);
   padding-left: 4px;
+  text-align: center;
 }
 .liquid-cell {
   text-align: center;
