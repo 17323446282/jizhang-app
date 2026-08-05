@@ -182,7 +182,7 @@ body {
 /* ===== Metric Cards Grid ===== */
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 160px)) 1fr;
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -906,6 +906,7 @@ body {
   .dist-row { grid-template-columns: 1fr; }
   .dist-table-wrap { max-height: none; }
   .liquid-funds-grid { grid-template-columns: 1fr; gap: 0; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .form-row { grid-template-columns: 1fr; }
   .asset-grid { grid-template-columns: 1fr 1fr; }
   .page-header { flex-direction: column; align-items: flex-start; }
