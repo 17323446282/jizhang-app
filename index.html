@@ -554,7 +554,22 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
-  margin-bottom: 20px;
+}
+/* ===== Monthly Main Layout: Left(3 panels) | Right(TOP10+Bills) ===== */
+.monthly-main-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+  align-items: start;
+}
+.monthly-left {
+  min-width: 0;
+}
+.monthly-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 .dist-card {
   background: var(--bg-card);
@@ -898,6 +913,7 @@ body {
   .savings-bar { height: 44px; }
   .savings-bar-text { font-size: 20px; }
   .chart-row { grid-template-columns: 1fr; }
+  .monthly-main-layout { grid-template-columns: 1fr; }
   .dist-row { grid-template-columns: 1fr; }
   .dist-table-wrap { max-height: none; }
   .liquid-funds-grid { grid-template-columns: 1fr; gap: 0; }
@@ -1240,66 +1256,74 @@ input[type="number"] { -moz-appearance: textfield; }
     <!-- Monthly Metrics -->
     <div class="metrics-grid" id="monthlyMetrics"></div>
 
-    <!-- Distribution Row: 3 equal panels (pie + color table) -->
-    <div class="dist-row" id="monthlyDistRow">
-      <!-- Panel 1: 收入分布 -->
-      <div class="dist-card">
-        <div class="dist-title">本月收入分布</div>
-        <div class="dist-pie-wrap"><div class="dist-pie" id="incomePieChart"></div></div>
-        <div class="dist-table-wrap">
-          <table class="dist-table" id="incomeDistTable">
-            <thead><tr><th>颜色</th><th>分项</th><th>金额<br>(仙仙)</th><th>金额<br>(伟伟)</th><th>备注</th></tr></thead>
-            <tbody id="incomeDistBody"></tbody>
-          </table>
+    <!-- Monthly Main Layout: Left=3 dist panels | Right=TOP10+Bills -->
+    <div class="monthly-main-layout">
+      <!-- LEFT: 3 Distribution Panels -->
+      <div class="monthly-left">
+        <div class="dist-row" id="monthlyDistRow">
+          <!-- Panel 1: 收入分布 -->
+          <div class="dist-card">
+            <div class="dist-title">本月收入分布</div>
+            <div class="dist-pie-wrap"><div class="dist-pie" id="incomePieChart"></div></div>
+            <div class="dist-table-wrap">
+              <table class="dist-table" id="incomeDistTable">
+                <thead><tr><th>颜色</th><th>分项</th><th>金额<br>(仙仙)</th><th>金额<br>(伟伟)</th><th>备注</th></tr></thead>
+                <tbody id="incomeDistBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <!-- Panel 2: 支出分布 -->
+          <div class="dist-card">
+            <div class="dist-title">本月支出分布</div>
+            <div class="dist-pie-wrap"><div class="dist-pie" id="expensePieChart"></div></div>
+            <div class="dist-table-wrap">
+              <table class="dist-table" id="expenseDistTable">
+                <thead><tr><th>颜色</th><th>分项</th><th>金额</th><th>备注</th></tr></thead>
+                <tbody id="expenseDistBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <!-- Panel 3: 流动资金分布 -->
+          <div class="dist-card">
+            <div class="dist-title">本月流动资金分布</div>
+            <div class="dist-pie-wrap"><div class="dist-pie" id="liquidPieChart"></div></div>
+            <div class="dist-table-wrap">
+              <table class="dist-table" id="liquidDistTable">
+                <thead><tr><th>颜色</th><th>分项</th><th>金额<br>(仙仙)</th><th>金额<br>(伟伟)</th><th>备注</th></tr></thead>
+                <tbody id="liquidDistBody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
-      <!-- Panel 2: 支出分布 -->
-      <div class="dist-card">
-        <div class="dist-title">本月支出分布</div>
-        <div class="dist-pie-wrap"><div class="dist-pie" id="expensePieChart"></div></div>
-        <div class="dist-table-wrap">
-          <table class="dist-table" id="expenseDistTable">
-            <thead><tr><th>颜色</th><th>分项</th><th>金额</th><th>备注</th></tr></thead>
-            <tbody id="expenseDistBody"></tbody>
-          </table>
-        </div>
-      </div>
-      <!-- Panel 3: 流动资金分布 -->
-      <div class="dist-card">
-        <div class="dist-title">本月流动资金分布</div>
-        <div class="dist-pie-wrap"><div class="dist-pie" id="liquidPieChart"></div></div>
-        <div class="dist-table-wrap">
-          <table class="dist-table" id="liquidDistTable">
-            <thead><tr><th>颜色</th><th>分项</th><th>金额<br>(仙仙)</th><th>金额<br>(伟伟)</th><th>备注</th></tr></thead>
-            <tbody id="liquidDistBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
 
-    <!-- Top Expenses -->
-    <div class="card">
-      <div class="card-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E24B4A" stroke-width="2" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
-        本月大额支出 Top 10
-      </div>
-      <ul class="top-list" id="topExpensesList"></ul>
-      <div class="empty-state hidden" id="topExpensesEmpty">
-        <p>本月暂无支出记录</p>
-      </div>
-    </div>
+      <!-- RIGHT: TOP10 + Bills -->
+      <div class="monthly-right">
+        <!-- Top Expenses -->
+        <div class="card">
+          <div class="card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E24B4A" stroke-width="2" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+            本月大额支出 Top 10
+          </div>
+          <ul class="top-list" id="topExpensesList"></ul>
+          <div class="empty-state hidden" id="topExpensesEmpty">
+            <p>本月暂无支出记录</p>
+          </div>
+        </div>
 
-    <!-- Bill Details -->
-    <div class="card">
-      <div class="card-title">本月账单明细</div>
-      <div class="bill-table-wrap">
-        <table class="bill-table" id="monthlyBillTable">
-          <thead><tr><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th></tr></thead>
-          <tbody id="monthlyBillBody"></tbody>
-        </table>
-      </div>
-      <div class="empty-state hidden" id="monthlyBillsEmpty">
-        <p>本月暂无账单</p>
+        <!-- Bill Details -->
+        <div class="card">
+          <div class="card-title">本月账单明细</div>
+          <div class="bill-table-wrap">
+            <table class="bill-table" id="monthlyBillTable">
+              <thead><tr><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th></tr></thead>
+              <tbody id="monthlyBillBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state hidden" id="monthlyBillsEmpty">
+            <p>本月暂无账单</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -2474,27 +2498,46 @@ function drawDistPie(containerId, dataMap, categories) {
     colorMap[key] = { color: PIE_COLORS[i % PIE_COLORS.length], pct: ((val/total)*100).toFixed(1) };
   });
 
-  const size = 160, cx=size/2, cy=size/2, r=62;
+  const size = 180, cx=size/2, cy=size/2, r=62;
   let accum = 0;
   let paths = '';
+  let labels = '';
 
   entries.forEach(([key, val], i) => {
     const pct = val / total;
     const angle = pct * 2 * Math.PI;
     const startAngle = accum * 2 * Math.PI;
     const endAngle = startAngle + angle;
+    const midAngle = startAngle + angle / 2;
     const x1 = cx + r * Math.cos(startAngle);
     const y1 = cy + r * Math.sin(startAngle);
     const x2 = cx + r * Math.cos(endAngle);
     const y2 = cy + r * Math.sin(endAngle);
     const largeArc = angle > Math.PI ? 1 : 0;
     paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z" fill="${PIE_COLORS[i % PIE_COLORS.length]}" stroke="#fff" stroke-width="1.5"/>`;
+
+    // Percentage label outside the slice
+    const pctVal = ((val/total)*100).toFixed(1);
+    if (parseFloat(pctVal) >= 3) { // only show label if >= 3%
+      const labelR = r + 16; // label distance from center
+      const lx = cx + labelR * Math.cos(midAngle);
+      const ly = cy + labelR * Math.sin(midAngle);
+      const anchor = (Math.abs(Math.cos(midAngle)) < 0.15) ? 'middle' : (Math.cos(midAngle) > 0 ? 'start' : 'end');
+      // small leader line from pie edge to label
+      const leaderX = cx + (r+3) * Math.cos(midAngle);
+      const leaderY = cy + (r+3) * Math.sin(midAngle);
+      labels += `<line x1="${leaderX}" y1="${leaderY}" x2="${lx}" y2="${ly}" stroke="${PIE_COLORS[i%PIE_COLORS.length]}" stroke-width="1" opacity="0.6"/>`;
+      labels += `<text x="${lx}" y="${ly}" text-anchor="${anchor}" dominant-baseline="middle" font-size="9.5" font-weight="600" fill="#555">${pctVal}%</text>`;
+    }
+
     accum += pct;
   });
 
   paths += `<circle cx="${cx}" cy="${cy}" r="${r*0.52}" fill="#FAFAFA"/>`;
   paths += `<text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="14" font-weight="600" fill="#333">${fmt(total)}</text>`;
   paths += `<text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="9" fill="#888">合计</text>`;
+  // Add labels layer on top
+  paths += labels;
 
   container.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
 
