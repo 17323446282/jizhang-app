@@ -549,18 +549,18 @@ body {
 }
 .btn-delete:hover { color: var(--expense-red); border-color: var(--expense-red); }
 
-/* ===== Distribution Row (3 panels: pie + table) ===== */
+/* ===== Distribution Row (3 equal panels: pie + color table) ===== */
 .dist-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 20px;
 }
 .dist-card {
   background: var(--bg-card);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
-  padding: 16px;
+  padding: 14px 12px;
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
@@ -569,73 +569,68 @@ body {
   font-size: 14px;
   font-weight: 600;
   text-align: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: var(--text-primary);
 }
 .dist-pie-wrap {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
   padding-bottom: 10px;
   border-bottom: 1px solid #f0ece8;
   margin-bottom: 8px;
 }
-.dist-pie { display: flex; justify-content: center; align-items: center; }
-.dist-pie-legend {
-  margin-top: 6px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
-  max-width: 100%;
-}
-.dist-pie-legend .legend-item { font-size: 10px; }
+.dist-pie { }
 .dist-table-wrap {
   flex: 1;
   overflow-y: auto;
-  max-height: 380px;
+  max-height: calc(100vh - 320px);
 }
 .dist-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .dist-table th {
   background: #f7f3ef;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-secondary);
-  padding: 6px 4px;
+  padding: 6px 2px;
   text-align: center;
   border: 1px solid #e8e0d8;
   position: sticky;
   top: 0;
+  white-space: nowrap;
 }
 .dist-table td {
-  padding: 5px 3px;
+  padding: 5px 2px;
   border: 1px solid #f0ece8;
   text-align: center;
   vertical-align: middle;
   color: var(--text-primary);
+  font-size: 12px;
 }
+.dist-table td.dist-color-cell { width: 24px; padding: 4px 2px; }
 .dist-table td.dist-name-cell {
   text-align: left;
   padding-left: 6px;
-  font-size: 12.5px;
-}
-.dist-table td.dist-person-cell {
-  text-align: center;
-  font-weight: 500;
-  background: #faf7f2;
-  font-size: 12.5px;
+  min-width: 60px;
 }
 .dist-table tr:hover td { background: #fef9f5; }
 .dist-editable {
   cursor: pointer;
-  min-width: 40px;
+  min-width: 36px;
   transition: background 0.15s;
 }
 .dist-editable:hover { background: #fce8e8; border-radius: 2px; }
+.color-dot-inline {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 2px;
+  vertical-align: middle;
+  border: 1px solid rgba(0,0,0,0.08);
+}
 
 /* ===== Pie Chart Section (legacy, kept for overview) ===== */
 .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
@@ -1245,56 +1240,41 @@ input[type="number"] { -moz-appearance: textfield; }
     <!-- Monthly Metrics -->
     <div class="metrics-grid" id="monthlyMetrics"></div>
 
-    <!-- Distribution Row: 3 panels (pie chart on top, table below) -->
+    <!-- Distribution Row: 3 equal panels (pie + color table) -->
     <div class="dist-row" id="monthlyDistRow">
-      <!-- Panel 1: 支出分布 -->
+      <!-- Panel 1: 收入分布 -->
       <div class="dist-card">
-        <div class="dist-title">本月支出分布</div>
-        <div class="dist-pie-wrap">
-          <div class="dist-pie" id="expensePieChart"></div>
-          <div class="dist-pie-legend" id="expensePieLegend"></div>
-        </div>
+        <div class="dist-title">本月收入分布</div>
+        <div class="dist-pie-wrap"><div class="dist-pie" id="incomePieChart"></div></div>
         <div class="dist-table-wrap">
-          <table class="dist-table" id="expenseDistTable">
-            <thead><tr><th>分项</th><th>金额</th><th>备注</th></tr></thead>
-            <tbody id="expenseDistBody"></tbody>
+          <table class="dist-table" id="incomeDistTable">
+            <thead><tr><th>颜色</th><th>分项</th><th>金额<br>(仙仙)</th><th>金额<br>(伟伟)</th><th>备注</th></tr></thead>
+            <tbody id="incomeDistBody"></tbody>
           </table>
         </div>
       </div>
-      <!-- Panel 2: 收入分布 -->
+      <!-- Panel 2: 支出分布 -->
       <div class="dist-card">
-        <div class="dist-title">本月收入分布</div>
-        <div class="dist-pie-wrap">
-          <div class="dist-pie" id="incomePieChart"></div>
-          <div class="dist-pie-legend" id="incomePieLegend"></div>
-        </div>
+        <div class="dist-title">本月支出分布</div>
+        <div class="dist-pie-wrap"><div class="dist-pie" id="expensePieChart"></div></div>
         <div class="dist-table-wrap">
-          <table class="dist-table" id="incomeDistTable">
-            <thead><tr><th>所属人</th><th>分项</th><th>金额</th><th>备注</th></tr></thead>
-            <tbody id="incomeDistBody"></tbody>
+          <table class="dist-table" id="expenseDistTable">
+            <thead><tr><th>颜色</th><th>分项</th><th>金额</th><th>备注</th></tr></thead>
+            <tbody id="expenseDistBody"></tbody>
           </table>
         </div>
       </div>
       <!-- Panel 3: 流动资金分布 -->
       <div class="dist-card">
         <div class="dist-title">本月流动资金分布</div>
-        <div class="dist-pie-wrap">
-          <div class="dist-pie" id="liquidPieChart"></div>
-          <div class="dist-pie-legend" id="liquidPieLegend"></div>
-        </div>
+        <div class="dist-pie-wrap"><div class="dist-pie" id="liquidPieChart"></div></div>
         <div class="dist-table-wrap">
           <table class="dist-table" id="liquidDistTable">
-            <thead><tr><th>所属人</th><th>分项</th><th>金额</th><th>备注</th></tr></thead>
+            <thead><tr><th>颜色</th><th>分项</th><th>金额<br>(仙仙)</th><th>金额<br>(伟伟)</th><th>备注</th></tr></thead>
             <tbody id="liquidDistBody"></tbody>
           </table>
         </div>
       </div>
-    </div>
-
-    <!-- Liquid Funds Breakdown (legacy, kept for backward compat) -->
-    <div class="card" id="liquidFundsCard">
-      <div class="card-title" style="text-align:center; font-size:15px; font-weight:600;">本月流动资金分项汇总</div>
-      <div id="liquidFundsTable"></div>
     </div>
 
     <!-- Top Expenses -->
@@ -2445,56 +2425,56 @@ function renderMonthlyCharts(range) {
   const bills = getBillsInRange(range.start, range.end);
   const mKey = 'wb_finance_dist_' + range.labelYear + '-' + String(range.labelMonth).padStart(2,'0');
 
-  // ── 1. 支出分布（饼图 + 表格）──
-  const expByCat = {};
-  bills.filter(b=>b.type==='expense').forEach(b => {
-    const cat = b.category || 'other_expense';
-    expByCat[cat] = (expByCat[cat]||0) + (parseFloat(b.amount)||0);
-  });
-  drawDistPie('expensePieChart', 'expensePieLegend', expByCat, EXPENSE_CATEGORIES);
-  renderExpenseDistTable(mKey, expByCat, EXPENSE_CATEGORIES);
-
-  // ── 2. 收入分布（饼图 + 表格，按人分组）──
+  // ── 1. 收入分布（饼图 + 表格）──
   const incByCat = {};
   bills.filter(b=>b.type==='income').forEach(b => {
     const cat = b.category || 'other_income';
     incByCat[cat] = (incByCat[cat]||0) + (parseFloat(b.amount)||0);
   });
-  drawDistPie('incomePieChart', 'incomePieLegend', incByCat, INCOME_CATEGORIES);
-  renderIncomeDistTable(mKey, incByCat, INCOME_CATEGORIES);
+  const incColorMap = drawDistPie('incomePieChart', incByCat, INCOME_CATEGORIES);
+  renderIncomeDistTable(mKey, incByCat, INCOME_CATEGORIES, incColorMap);
+
+  // ── 2. 支出分布（饼图 + 表格）──
+  const expByCat = {};
+  bills.filter(b=>b.type==='expense').forEach(b => {
+    const cat = b.category || 'other_expense';
+    expByCat[cat] = (expByCat[cat]||0) + (parseFloat(b.amount)||0);
+  });
+  const expColorMap = drawDistPie('expensePieChart', expByCat, EXPENSE_CATEGORIES);
+  renderExpenseDistTable(mKey, expByCat, EXPENSE_CATEGORIES, expColorMap);
 
   // ── 3. 流动资金分布（饼图 + 表格）──
   const lKey = 'wb_finance_liquid_' + range.labelYear + '-' + String(range.labelMonth).padStart(2,'0');
   let lData = JSON.parse(localStorage.getItem(lKey)||'{}');
   if (!lData.xian) lData.xian = LIQUID_ITEMS_XIAN.map(n=>({name:n,amount:'',note:''}));
   if (!lData.weiwei) lData.weiwei = LIQUID_ITEMS_WEIWEI.map(n=>({name:n,amount:'',note:''}));
-  // Build pie data from liquid amounts
   const liqByItem = {};
   [...lData.xian,...lData.weiwei].forEach(item => {
     if (item.amount) { const v=parseFloat(item.amount)||0; if(v>0) liqByItem[item.name]=(liqByItem[item.name]||0)+v; }
   });
   const LIQUID_PIE_CATS = LIQUID_ITEMS_XIAN.map(n=>({key:n,name:n}));
-  drawDistPie('liquidPieChart', 'liquidPieLegend', liqByItem, LIQUID_PIE_CATS);
-  renderLiquidDistTable(lKey, lData);
-
-  // Also render legacy liquidFundsTable for backward compat
-  renderLiquidFunds(range);
+  const liqColorMap = drawDistPie('liquidPieChart', liqByItem, LIQUID_PIE_CATS);
+  renderLiquidDistTable(lKey, lData, liqColorMap);
 }
 
-// ── Compact donut pie chart for distribution panels ──
-function drawDistPie(containerId, legendId, dataMap, categories) {
+// ── Donut pie chart for distribution panels (no legend, returns colorMap) ──
+function drawDistPie(containerId, dataMap, categories) {
   const entries = Object.entries(dataMap).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
   const container = document.getElementById(containerId);
-  const legend = document.getElementById(legendId);
 
   if (entries.length === 0) {
     container.innerHTML = '<p style="color:var(--text-muted);font-size:11px;">暂无数据</p>';
-    legend.innerHTML = '';
-    return;
+    return {};
   }
 
+  // Build colorMap: key -> { color, pct }
   const total = entries.reduce((s,[,v])=>s+v, 0);
-  const size = 140, cx=size/2, cy=size/2, r=54;
+  const colorMap = {};
+  entries.forEach(([key, val], i) => {
+    colorMap[key] = { color: PIE_COLORS[i % PIE_COLORS.length], pct: ((val/total)*100).toFixed(1) };
+  });
+
+  const size = 160, cx=size/2, cy=size/2, r=62;
   let accum = 0;
   let paths = '';
 
@@ -2508,32 +2488,32 @@ function drawDistPie(containerId, legendId, dataMap, categories) {
     const x2 = cx + r * Math.cos(endAngle);
     const y2 = cy + r * Math.sin(endAngle);
     const largeArc = angle > Math.PI ? 1 : 0;
-    paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z" fill="${PIE_COLORS[i % PIE_COLORS.length]}" stroke="#fff" stroke-width="1.2"/>`;
+    paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z" fill="${PIE_COLORS[i % PIE_COLORS.length]}" stroke="#fff" stroke-width="1.5"/>`;
     accum += pct;
   });
 
   paths += `<circle cx="${cx}" cy="${cy}" r="${r*0.52}" fill="#FAFAFA"/>`;
-  paths += `<text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="13" font-weight="600" fill="#333">${fmt(total)}</text>`;
-  paths += `<text x="${cx}" y="${cy+11}" text-anchor="middle" font-size="9" fill="#888">合计</text>`;
+  paths += `<text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="14" font-weight="600" fill="#333">${fmt(total)}</text>`;
+  paths += `<text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="9" fill="#888">合计</text>`;
 
   container.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg>`;
 
-  legend.innerHTML = entries.map(([key, val], i) => {
-    const cat = categories.find(c=>c.key===key) || {name:key};
-    const pct = ((val/total)*100).toFixed(1);
-    return `<span class="legend-item"><span class="legend-dot" style="background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>${cat.name} ${pct}%</span>`;
-  }).join('');
+  return colorMap;
 }
 
-// ── 支出分布表格（分项|金额|备注）──
-function renderExpenseDistTable(mKey, expByCat, categories) {
+// ── 支出分布表格（颜色|分项|金额|备注）──
+function renderExpenseDistTable(mKey, expByCat, categories, colorMap) {
   const tbody = document.getElementById('expenseDistBody');
   let notes = JSON.parse(localStorage.getItem(mKey+'_exp_notes')||'{}');
 
   tbody.innerHTML = categories.map(cat => {
     const amt = expByCat[cat.key] || 0;
     const note = notes[cat.key] || '';
+    const ci = colorMap[cat.key];
+    const dotColor = ci ? ci.color : '#ccc';
+    const dotPct = ci ? ci.pct : '';
     return `<tr>
+      <td class="dist-color-cell"><span class="color-dot-inline" style="background:${dotColor}" title="${dotPct}%"></span></td>
       <td class="dist-name-cell">${cat.name}</td>
       <td class="dist-editable" ondblclick="editDistCell('${mKey}_exp_notes','${cat.key}','amount',this,event)">${amt ? fmt(amt) : ''}</td>
       <td class="dist-editable" ondblclick="editDistCell('${mKey}_exp_notes','${cat.key}','note',this,event)">${escHtml(note)}</td>
@@ -2541,54 +2521,54 @@ function renderExpenseDistTable(mKey, expByCat, categories) {
   }).join('');
 }
 
-// ��─ 收入分布表格（所属人|分项|金额|备注，按仙仙/伟伟分��）──
-function renderIncomeDistTable(mKey, incByCat, categories) {
+// ── 收入分布表格（颜色|分项|金额仙仙|金额伟伟|备注）──
+function renderIncomeDistTable(mKey, incByCat, categories, colorMap) {
   const tbody = document.getElementById('incomeDistBody');
   let notes = JSON.parse(localStorage.getItem(mKey+'_inc_notes')||'{}');
 
-  const persons = [
-    { label: '仙仙', key: 'xian' },
-    { label: '伟伟', key: 'weiwei' }
-  ];
-
   let rows = '';
-  persons.forEach(p => {
-    categories.forEach((cat, idx) => {
-      const amt = incByCat[cat.key] || 0;
-      const note = notes[p.key+'_'+cat.key] || '';
-      const isFirst = idx === 0;
-      rows += `<tr>
-        ${isFirst ? `<td class="dist-person-cell" rowspan="${categories.length}">${p.label}</td>` : ''}
-        <td class="dist-name-cell">${cat.name}</td>
-        <td class="dist-editable" ondblclick="editDistCell('${mKey}_inc_notes','${p.key}_${cat.key}','amount',this,event)">${amt ? fmt(amt) : ''}</td>
-        <td class="dist-editable" ondblclick="editDistCell('${mKey}_inc_notes','${p.key}_${cat.key}','note',this,event)">${escHtml(note)}</td>
-      </tr>`;
-    });
+  categories.forEach(cat => {
+    const amtTotal = incByCat[cat.key] || 0;
+    const noteXian = notes['xian_'+cat.key] || '';
+    const noteWeiwei = notes['weiwei_'+cat.key] || '';
+    const ci = colorMap[cat.key];
+    const dotColor = ci ? ci.color : '#ccc';
+    rows += `<tr>
+      <td class="dist-color-cell"><span class="color-dot-inline" style="background:${dotColor}"></span></td>
+      <td class="dist-name-cell">${cat.name}</td>
+      <td class="dist-editable" ondblclick="editDistCell('${mKey}_inc_notes','xian_${cat.key}','amount',this,event)">${amtTotal ? fmt(amtTotal) : ''}</td>
+      <td class="dist-editable" ondblclick="editDistCell('${mKey}_inc_notes','weiwei_${cat.key}','amount',this,event)"></td>
+      <td class="dist-editable" ondblclick="editDistCell('${mKey}_inc_notes','xian_${cat.key}','note',this,event)">${escHtml(noteXian)}</td>
+    </tr>`;
   });
 
   tbody.innerHTML = rows;
 }
 
-// ── 流动资金分布表格（所属人|分项|金额|备注，按仙仙/伟伟分组）──
-function renderLiquidDistTable(lKey, lData) {
+// ── 流动资金分布表格（颜色|��项|金额仙仙|金额伟伟|备注）──
+function renderLiquidDistTable(lKey, lData, colorMap) {
   const tbody = document.getElementById('liquidDistBody');
 
-  const persons = [
-    { label: '仙仙', items: lData.xian, key: 'xian' },
-    { label: '伟伟', items: lData.weiwei, key: 'weiwei' }
-  ];
+  // Merge xian+weiwei items, show both amounts per row
+  const allItems = [];
+  lData.xian.forEach(item => allItems.push({ name: item.name, xianAmt: item.amount, xianNote: item.note, weiweiAmt: '', weiweiNote: '' }));
+  lData.weiwei.forEach(item => {
+    const existing = allItems.find(a => a.name === item.name);
+    if (existing) { existing.weiweiAmt = item.amount; existing.weiweiNote = item.note; }
+    else allItems.push({ name: item.name, xianAmt: '', xianNote: '', weiweiAmt: item.amount, weiweiNote: item.note });
+  });
 
   let rows = '';
-  persons.forEach(p => {
-    p.items.forEach((item, idx) => {
-      const isFirst = idx === 0;
-      rows += `<tr>
-        ${isFirst ? `<td class="dist-person-cell" rowspan="${p.items.length}">${p.label}</td>` : ''}
-        <td class="dist-name-cell">${item.name}</td>
-        <td class="dist-editable" ondblclick="editLiquidCell('${lKey}','${p.key}',${idx},'amount',this)">${item.amount||''}</td>
-        <td class="dist-editable" ondblclick="editLiquidCell('${lKey}','${p.key}',${idx},'note',this)">${escHtml(item.note||'')}</td>
-      </tr>`;
-    });
+  allItems.forEach(item => {
+    const ci = colorMap[item.name];
+    const dotColor = ci ? ci.color : '#ccc';
+    rows += `<tr>
+      <td class="dist-color-cell"><span class="color-dot-inline" style="background:${dotColor}"></span></td>
+      <td class="dist-name-cell">${item.name}</td>
+      <td class="dist-editable" ondblclick="editLiquidCell('${lKey}','xian',${lData.xian.findIndex(i=>i.name===item.name)},'amount',this)">${item.xianAmt||''}</td>
+      <td class="dist-editable" ondblclick="editLiquidCell('${lKey}','weiwei',${lData.weiwei.findIndex(i=>i.name===item.name)},'amount',this)">${item.weiweiAmt||''}</td>
+      <td class="dist-editable" ondblclick="editLiquidCell('${lKey}','xian',${lData.xian.findIndex(i=>i.name===item.name)},'note',this)">${escHtml(item.xianNote||'')}</td>
+    </tr>`;
   });
 
   tbody.innerHTML = rows;
