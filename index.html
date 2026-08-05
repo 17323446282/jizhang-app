@@ -825,6 +825,31 @@ body {
 .sync-disconnect-btn:hover { background: #D4A0A5; }
 .sync-panel.has-sync .sync-disconnect-btn { display: block; }
 
+/* Settings page sync status bar (punch-workbench style) */
+.settings-sync-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 600;
+}
+.settings-sync-bar .dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.settings-sync-bar.connected { background: #EAF3DE; color: #3B6D11; }
+.settings-sync-bar.connected .dot { background: #4CAF50; box-shadow: 0 0 8px rgba(76,175,80,0.5); }
+.settings-sync-bar.offline { background: #F1EFE8; color: #5F5E5A; }
+.settings-sync-bar.offline .dot { background: #B4B2A9; }
+.settings-sync-bar.syncing { background: #FAEEDA; color: #854F0B; }
+.settings-sync-bar.syncing .dot { background: #EF9F27; animation: pulse-dot 1s infinite; }
+.settings-sync-bar.error { background: #FDECEC; color: #A32218; }
+.settings-sync-bar.error .dot { background: #D32F2F; }
+
+.btn-disconnect {
+  display: block; width: 100%; padding: 12px; border-radius: 10px;
+  background: #E8B4B8; color: #fff; font-size: 14px; font-weight: 600;
+  cursor: pointer; border: none; text-align: center;
+  box-shadow: 0 2px 8px rgba(232,180,184,0.35);
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-disconnect:hover { background: #D4A0A5; }
+.btn-disconnect:active { transform: scale(0.98); }
+
 /* ===== Settings Page ===== */
 .setting-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.7; }
 .code-box { font-family: ui-monospace, "SF Mono", Menlo, monospace; background: #FAFAFA; border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 13px; }
@@ -1152,10 +1177,13 @@ input[type="number"] { -moz-appearance: textfield; }
           <button class="btn btn-sm" type="button" onclick="copySyncCode()">复制</button>
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:8px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" type="button" onclick="saveAndConnect()">保存并连接</button>
-        <button class="btn btn-sm" type="button" onclick="disconnectCloud()">断开云端</button>
-        <span id="sbStatusText" style="font-size:12px;color:var(--text-secondary)"></span>
+      <div style="margin-top:12px;">
+        <button class="btn btn-primary btn-sm" type="button" onclick="saveAndConnect()" id="settingsConnectBtn">保存并连接</button>
+        <div class="settings-sync-bar offline" id="settingsSyncBar" style="display:none;margin-top:10px;">
+          <span class="dot"></span>
+          <span id="settingsSyncText">未连接</span>
+        </div>
+        <button class="btn btn-block btn-disconnect" type="button" onclick="disconnectCloud()" id="settingsDisconnectBtn" style="display:none;margin-top:8px;">关闭同步</button>
       </div>
       <p class="setting-hint" style="margin-top:16px;"><b>第一步</b>：在 Supabase 后台 → <b>SQL Editor</b> 粘贴并执行下面这段（建表 + 关闭安全限制）：<br>
         <span class="code-box">create table if not exists finance_sync (<br>
@@ -2480,6 +2508,25 @@ function copySyncCode() {
   }
 }
 
+function updateSettingsSyncUI(connected) {
+  const bar = document.getElementById('settingsSyncBar');
+  const txt = document.getElementById('settingsSyncText');
+  const connBtn = document.getElementById('settingsConnectBtn');
+  const discBtn = document.getElementById('settingsDisconnectBtn');
+  if (!bar || !connBtn) return;
+  if (connected && sbConfig && sbConfig.syncCode) {
+    bar.style.display = 'flex';
+    bar.className = 'settings-sync-bar connected';
+    txt.textContent = '已连接 · 每 5 秒自动同步';
+    connBtn.style.display = 'none';
+    discBtn.style.display = 'block';
+  } else {
+    bar.style.display = 'none';
+    connBtn.style.display = 'inline-block';
+    discBtn.style.display = 'none';
+  }
+}
+
 function saveAndConnect() {
   const url = document.getElementById('sbUrl').value.trim();
   const key = document.getElementById('sbKey').value.trim();
@@ -2487,9 +2534,30 @@ function saveAndConnect() {
   if (!url || !key) { alert('请先填写 Supabase URL 和 Anon Key'); return; }
   if (!code) { code = genCode(); document.getElementById('sbCode').value = code; }
   saveSupabaseConfig({ url: url, anonKey: key, syncCode: code });
-  const st = document.getElementById('sbStatusText');
-  if (st) st.textContent = '连接中…';
-  pullFromSupabase().then(() => { if (st) st.textContent = '已连接云端'; });
+
+  // show syncing state
+  const bar = document.getElementById('settingsSyncBar');
+  const txt = document.getElementById('settingsSyncText');
+  if (bar) { bar.style.display = 'flex'; bar.className = 'settings-sync-bar syncing'; }
+  if (txt) txt.textContent = '连接中…';
+
+  pullFromSupabase().then(() => {
+    // connected → show green bar + disconnect btn
+    const b = document.getElementById('settingsSyncBar');
+    const t = document.getElementById('settingsSyncText');
+    const connBtn = document.getElementById('settingsConnectBtn');
+    const discBtn = document.getElementById('settingsDisconnectBtn');
+    if (b) { b.style.display = 'flex'; b.className = 'settings-sync-bar connected'; }
+    if (t) t.textContent = '已连接 · 每 5 秒自动同步';
+    if (connBtn) connBtn.style.display = 'none';
+    if (discBtn) discBtn.style.display = 'block';
+  }).catch((e) => {
+    // error state
+    const b = document.getElementById('settingsSyncBar');
+    const t = document.getElementById('settingsSyncText');
+    if (b) { b.style.display = 'flex'; b.className = 'settings-sync-bar error'; }
+    if (t) t.textContent = e && e.message ? e.message : '同步失败';
+  });
 }
 
 function disconnectCloud() {
@@ -2497,8 +2565,13 @@ function disconnectCloud() {
     localStorage.removeItem(SB_KEY);
     sbConfig = null;
     setSync('offline');
-    const st = document.getElementById('sbStatusText');
-    if (st) st.textContent = '';
+    // revert UI: show connect btn, hide bar + disconnect
+    const bar = document.getElementById('settingsSyncBar');
+    const connBtn = document.getElementById('settingsConnectBtn');
+    const discBtn = document.getElementById('settingsDisconnectBtn');
+    if (bar) bar.style.display = 'none';
+    if (connBtn) connBtn.style.display = 'inline-block';
+    if (discBtn) discBtn.style.display = 'none';
     closeModal();
   });
 }
@@ -2573,8 +2646,10 @@ function init() {
   // Sync: initial pull if configured, else offline
   if (sbConfig && sbConfig.url && sbConfig.anonKey && sbConfig.syncCode) {
     pullFromSupabase();
+    updateSettingsSyncUI(true);
   } else {
     setSync('offline');
+    updateSettingsSyncUI(false);
   }
 
   // Network status listeners
