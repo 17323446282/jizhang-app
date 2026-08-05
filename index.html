@@ -106,20 +106,11 @@ body {
   flex: 1;
   min-height: 100vh;
   padding: 24px 32px;
-  max-width: 1600px;
+  max-width: 1200px;
 }
 .page { display: none; }
 .page.active { display: block; animation: fadeIn 0.25s ease; }
 
-/* ===== Overview two-column layout (desktop) ===== */
-.overview-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(340px, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-.overview-left { min-width: 0; }
-.overview-right { min-width: 0; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ===== Page Header ===== */
@@ -753,8 +744,6 @@ body {
   }
   .mobile-nav { display: flex; }
   .metrics-grid { grid-template-columns: 1fr 1fr; }
-  .overview-layout { grid-template-columns: 1fr; gap: 0; }
-  .overview-right .card { position: static; }
   .progress-section { padding: 18px 14px; }
   .savings-grid { grid-template-columns: 1fr; gap: 0; }
   .savings-col:first-child { border-right: none; border-bottom: 1px dashed rgba(212,160,165,0.35); padding-bottom: 12px; }
@@ -854,7 +843,6 @@ body {
   .main-content { margin-left: 200px; padding: 20px 20px 80px; max-width: none; }
   .nav-item { padding: 11px 14px; font-size: 13.5px; }
   .nav-item svg { width: 18px; height: 18px; }
-  .overview-layout { grid-template-columns: 1.3fr 1fr; gap: 16px; }
   .savings-grid { grid-template-columns: 1fr 1fr; gap: 0; }
   .savings-col:first-child { border-right: 1px dashed rgba(212,160,165,0.35); border-bottom: none; padding-bottom: 0; }
   .metrics-grid { grid-template-columns: 1fr 1fr; }
@@ -950,45 +938,39 @@ input[type="number"] { -moz-appearance: textfield; }
       <span id="dataWarningText"></span>
     </div>
 
-    <div class="overview-layout">
-      <div class="overview-left">
-        <!-- Savings Progress Section -->
-        <div class="progress-section" id="progressSection">
-          <div class="savings-title">📊 本年度储蓄计划</div>
-          <div class="savings-bar-wrap" id="savingsBarWrap"></div>
-          <div class="savings-grid" id="savingsGrid"></div>
-        </div>
+    <!-- Savings Progress Section -->
+    <div class="progress-section" id="progressSection">
+      <div class="savings-title">📊 本年度储蓄计划</div>
+      <div class="savings-bar-wrap" id="savingsBarWrap"></div>
+      <div class="savings-grid" id="savingsGrid"></div>
+    </div>
 
-        <!-- Quick Metrics -->
-        <div class="metrics-grid" id="quickMetrics"></div>
+    <!-- Quick Metrics -->
+    <div class="metrics-grid" id="quickMetrics"></div>
 
-        <!-- Asset Snapshot -->
-        <div class="card">
-          <div class="card-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>
-            资产快照（手动填写，每月更新一次）
-          </div>
-          <div class="asset-grid" id="assetGrid"></div>
-          <div style="margin-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:12px;">
-            <span style="font-size:13px;color:var(--text-secondary)">净资产总额：</span>
-            <span style="font-size:22px;font-weight:500;color:var(--color-primary-dark)" id="netWorthTotal">¥0</span>
-          </div>
-        </div>
+    <!-- Asset Snapshot -->
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>
+        资产快照（手动填写，每月更新一次）
       </div>
-
-      <!-- Annual Budget Plan (right column) -->
-      <div class="overview-right">
-        <div class="card" style="position:sticky;top:24px;">
-          <div class="card-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            本年度预算计划
-          </div>
-          <table class="budget-table" id="budgetTable">
-            <thead><tr><th>项目</th><th>月均（¥）</th><th>年总计（¥）</th></tr></thead>
-            <tbody id="budgetBody"></tbody>
-          </table>
-        </div>
+      <div class="asset-grid" id="assetGrid"></div>
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:12px;">
+        <span style="font-size:13px;color:var(--text-secondary)">净资产总额：</span>
+        <span style="font-size:22px;font-weight:500;color:var(--color-primary-dark)" id="netWorthTotal">¥0</span>
       </div>
+    </div>
+
+    <!-- Annual Budget Plan -->
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        本年度预算计划
+      </div>
+      <table class="budget-table" id="budgetTable">
+        <thead><tr><th>项目</th><th>月均（¥）</th><th>年总计（¥）</th></tr></thead>
+        <tbody id="budgetBody"></tbody>
+      </table>
     </div>
   </div>
 
