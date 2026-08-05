@@ -3842,7 +3842,7 @@ function bkRenderFileList() {
 }
 
 // 核心识别解析：文字 + 文件 → 结构化账单
-function bkRecognize() {
+async function bkRecognize() {
   const textVal = document.getElementById('bkTextInput').value.trim();
   let bills = [];
 
@@ -3851,10 +3851,13 @@ function bkRecognize() {
     bills = bills.concat(bkParseText(textVal));
   }
 
-  // 2. 解析文件（CSV）
+  // 2. 解析文件（CSV / XLSX）
   for (const f of _bkState.files) {
     if (f.name.endsWith('.csv')) {
       bills = bills.concat(bkParseCSVFile(f));
+    } else if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
+      const xlsxBills = await bkParseXLSXFile(f);
+      bills = bills.concat(xlsxBills);
     }
   }
 
@@ -4007,6 +4010,354 @@ function bkSplitCSVLine(line) {
   }
   result.push(current);
   return result;
+}
+
+
+// ========== 纯前端 XLSX 解析器（零依赖，浏览器原生 API）==========
+// 原理：xlsx = ZIP(DEFLATE) + 内部 XML；用 DecompressionStream 解压 + DOMParser 解析 XML
+async function bkParseXLSXFile(file) {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const zipEntries = await parseZIP(new Uint8Array(arrayBuffer));
+
+    // 读取共享字符串表
+    let sharedStrings = [];
+    if (zipEntries['xl/sharedStrings.xml']) {
+      sharedStrings = parseSharedStrings(zipEntries['xl/sharedStrings.xml']);
+    }
+
+    // 读取第一个工作表
+    const sheetPath = findSheetPath(zipEntries);
+    if (!sheetPath || !zipEntries[sheetPath]) {
+      console.warn('xlsx: 未找到工作表');
+      return [];
+    }
+
+    const rows = parseSheetXML(zipEntries[sheetPath], sharedStrings);
+    return convertWechatXLSXRows(rows, file.name);
+  } catch (err) {
+    console.error('xlsx 解析失败:', err);
+    alert('Excel 文件解析失败: ' + err.message + '\n\n建议：请在微信/支付宝中导出 CSV 格式后重试。');
+    return [];
+  }
+}
+
+// --- ZIP 解压（使用 DecompressionStream API）---
+async function parseZIP(data) {
+  const entries = {};
+  const view = new DataView(data.buffer || data);
+
+  // 解析 ZIP 中央目录找到文件列表
+  const entriesList = [];
+  let offset = data.length - 22; // End of central directory record (EOCD)
+  if (view.getUint32(offset, true) !== 0x06054b50) {
+    throw new Error('不是有效的 ZIP/XLSX 文件');
+  }
+  const cdOffset = view.getUint32(offset + 16, true);
+  const cdSize = view.getUint32(offset + 12, true);
+
+  // 解析中央目录
+  offset = cdOffset;
+  while (offset < cdOffset + cdSize) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break;
+    const nameLen = view.getUint16(offset + 28, true);
+    const extraLen = view.getUint16(offset + 30, true);
+    const commentLen = view.getUint16(offset + 32, true);
+    const localHdrOffset = view.getUint32(offset + 42, true);
+    const compSize = view.getUint32(offset + 20, true);
+    const uncompSize = view.getUint32(offset + 24, true);
+    const compression = view.getUint16(offset + 10, true);
+
+    const nameBytes = new Uint8Array(data.buffer || data, offset + 46, nameLen);
+    const name = new TextDecoder().decode(nameBytes);
+
+    entriesList.push({
+      name,
+      localHdrOffset,
+      compSize,
+      uncompSize,
+      compression
+    });
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+
+  // 逐个解压文件内容
+  for (const entry of entriesList) {
+    // 解析 local file header
+    let off = entry.localHdrOffset;
+    if (view.getUint32(off, true) !== 0x04034b50) continue;
+    const lNameLen = view.getUint16(off + 26, true);
+    const lExtraLen = view.getUint16(off + 28, true);
+    const dataStart = off + 30 + lNameLen + lExtraLen;
+
+    let compData = new Uint8Array(data.buffer || data, dataStart, entry.compSize);
+    // 复制一份（避免 DataView 引用问题）
+    compData = new Uint8Array(compData);
+
+    if (entry.compression === 0) {
+      // 存储 (无压缩)
+      entries[entry.name] = compData;
+    } else if (entry.compression === 8) {
+      // DEFLATE
+      try {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(compData);
+        writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        const totalLen = chunks.reduce((a, c) => a + c.length, 0);
+        const result = new Uint8Array(totalLen);
+        let pos = 0;
+        for (const chunk of chunks) {
+          result.set(chunk, pos);
+          pos += chunk.length;
+        }
+        entries[entry.name] = result;
+      } catch (e) {
+        console.warn('DEFLATE 解压失败:', entry.name, e);
+      }
+    }
+  }
+  return entries;
+}
+
+// --- 解析共享字符串表 ---
+function parseSharedStrings(xmlBytes) {
+  const xml = new TextDecoder().decode(xmlBytes);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, 'application/xml');
+  const strings = [];
+  const siNodes = doc.getElementsByTagName('si');
+  for (const si of siNodes) {
+    const tNodes = si.getElementsByTagName('t');
+    let text = '';
+    for (const t of tNodes) {
+      text += t.textContent || '';
+    }
+    strings.push(text);
+  }
+  return strings;
+}
+
+// --- 找到第一个工作表路径 ---
+function findSheetPath(entries) {
+  // 先找 [Content_Types].xml 获取 sheet 路径
+  if (entries['[Content_Types].xml']) {
+    const xml = new TextDecoder().decode(entries['[Content_Types].xml']);
+    // 匹配 PartName="/xl/worksheets/sheet1.xml" 或类似
+    const match = xml.match(/PartName="\/xl\/worksheets\/(sheet\d+\.xml)"/);
+    if (match) return '/xl/worksheets/' + match[1];
+  }
+  // fallback: 直接找
+  for (const name of Object.keys(entries)) {
+    if (name.match(/\/xl\/worksheets\/sheet\d+\.xml$/)) return name;
+  }
+  // 再 fallback
+  for (const name of Object.keys(entries)) {
+    if (name.includes('sheet') && name.includes('.xml')) return name;
+  }
+  return null;
+}
+
+// --- 解析工作表 XML → 二维数组 ---
+function parseSheetXML(xmlBytes, sharedStrings) {
+  const xml = new TextDecoder().decode(xmlBytes);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, 'application/xml');
+  const rows = [];
+
+  const rowNodes = doc.getElementsByTagName('row');
+  for (const rowNode of rowNodes) {
+    const cells = [];
+    const cellNodes = rowNode.getElementsByTagName('c');
+    for (const cell of cellNodes) {
+      const type = cell.getAttribute('t'); // s=shared string, inlineStr=inline
+      const vNode = cell.getElementsByTagName('v')[0];
+      if (!vNode) { cells.push(''); continue; }
+
+      let value = vNode.textContent || '';
+
+      if (type === 's' && sharedStrings.length > 0) {
+        // 共享字符串索引
+        const idx = parseInt(value, 10);
+        value = (idx >= 0 && idx < sharedStrings.length) ? sharedStrings[idx] : value;
+      } else if (type === 'inlineStr') {
+        const tNode = cell.getElementsByTagName('t')[0];
+        value = tNode ? (tNode.textContent || '') : value;
+      } else {
+        // 数字或日期 — 尝试转数字
+        const num = parseFloat(value);
+        if (!isNaN(num) && value.trim() !== '') {
+          value = num;
+        }
+      }
+      cells.push(value);
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+// --- 微信/支付宝账单行转换 → 标准账单格式 ---
+function convertWechatXLSXRows(rows, sourceName) {
+  const bills = [];
+
+  // 1. 找表头行（包含 "交易时间" 的行）
+  let headerIdx = -1;
+  let headerMap = {}; // 列名 → 索引
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const firstCell = String(row[0] || '');
+    if (firstCell.includes('交易时间')) {
+      headerIdx = i;
+      for (let j = 0; j < row.length; j++) {
+        const colName = String(row[j] || '').trim();
+        if (colName) headerMap[colName] = j;
+      }
+      break;
+    }
+  }
+
+  if (headerIdx < 0) {
+    console.warn('xlsx: 未找到微信/支付宝账单表头');
+    return [];
+  }
+
+  console.log('xlsx 表头:', headerMap);
+
+  // 2. 判断是微信还是支付宝格式
+  const isWechat = '交易对方' in headerMap || '收/支' in headerMap;
+  const isAlipay = ('交易分类' in headerMap || '收/付款方' in headerMap) && !isWechat;
+
+  // 3. 解析数据行
+  const dateCol = headerMap['交易时间'] || 0;
+  const typeCol = headerMap['交易类型'] || headerMap['交易分类'] || -1;
+  const counterpartyCol = headerMap['交易对方'] || headerMap['收/付款方'] || -1;
+  const productCol = headerMap['商品'] || headerMap['商品说明'] || headerMap['商品名称'] || -1;
+  const incomeExpenseCol = headerMap['收/支'] || -1;
+  const amountCol = headerMap['金额(元)'] || headerMap['金额'] || headerMap['收入金额'] || headerMap['支出金额'] || -1;
+  const payMethodCol = headerMap['支付方式'] || -1;
+
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+
+    // 取值辅助函数
+    const val = (col) => col >= 0 && col < row.length ? row[col] : '';
+
+    let dateVal = val(dateCol);
+    let summary = '';
+    let amount = 0;
+    let type = 'expense';
+
+    // --- 日期处理 ---
+    if (dateVal instanceof Date) {
+      dateVal = dateVal.toISOString().slice(0, 10);
+    } else if (typeof dateVal === 'number') {
+      // Excel 日期序列号 → 日期
+      dateVal = excelDateToDate(dateVal);
+    } else {
+      dateVal = String(dateVal).replace(/\//g, '-').slice(0, 10);
+    }
+    if (!dateVal || !/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) continue;
+
+    // --- 金额处理 ---
+    let amtVal = val(amountCol);
+    if (typeof amtVal === 'number') {
+      amount = Math.abs(amtVal);
+    } else {
+      const amtMatch = String(amtVal || '').match(/(\d+(?:\.\d{1,2})?)/);
+      amount = amtMatch ? Math.abs(parseFloat(amtMatch[1])) : 0;
+    }
+    if (!amount || amount <= 0) continue;
+
+    // --- 收/支判断 ---
+    if (isWechat) {
+      const ieVal = String(val(incomeExpenseCol) || '');
+      if (ieVal.includes('收入')) type = 'income';
+      else if (ieVal.includes('支出')) type = 'expense';
+      // 微信"中性"交易默认算支出（用户可后续手动调整）
+      else type = 'expense';
+    } else if (isAlipay) {
+      // 支付宝：金额正负表示方向，或有单独的 收入/支出金额列
+      const incCol = headerMap['收入金额'] || -1;
+      const expCol = headerMap['支出金额'] || -1;
+      if (incCol >= 0 && parseFloat(val(incCol)) > 0) {
+        type = 'income';
+        amount = Math.abs(parseFloat(val(incCol)));
+      } else if (expCol >= 0 && parseFloat(val(expCol)) > 0) {
+        type = 'expense';
+        amount = Math.abs(parseFloat(val(expCol)));
+      } else {
+        type = amount > 0 ? 'expense' : 'income';
+        amount = Math.abs(amount);
+      }
+    }
+
+    // --- 摘要：优先用 商品 > 交易对方 > 交易类型 ---
+    const product = String(val(productCol) || '').trim();
+    const counterparty = String(val(counterpartyCol) || '').trim();
+    const txType = String(val(typeCol) || '').trim();
+
+    if (product && !product.startsWith('商户单号') && !product.startsWith('转账备注')) {
+      summary = product;
+    } else if (counterparty) {
+      summary = counterparty + (txType ? '·' + txType : '');
+    } else if (txType) {
+      summary = txType;
+    } else {
+      summary = type === 'income' ? '收入' : '支出';
+    }
+
+    // 清理摘要中的常见无用前缀
+    summary = summary
+      .replace(/^(商户单号|转账备注):?/gi, '')
+      .replace(/^微信转账$/gi, '转账')
+      .trim();
+    if (!summary) summary = type === 'income' ? '收入' : '支出';
+
+    // 备注：加上支付方式便于核对
+    const payMethod = String(val(payMethodCol) || '').trim();
+    const note = payMethod ? `支付方式: ${payMethod}` : '';
+
+    const category = bkAutoClassify(summary, type);
+    bills.push({
+      id: genId(),
+      date: dateVal,
+      summary,
+      type,
+      category,
+      amount,
+      note,
+      source: sourceName,
+      checked: true,
+      status: 'imported'
+    });
+  }
+
+  console.log(`xlsx 解析完成: ${bills.length} 条记录 (来源: ${sourceName})`);
+  return bills;
+}
+
+// Excel 日期序列号 → YYYY-MM-DD
+function excelDateDate(serial) {
+  if (isNaN(serial) || serial <= 0) return '';
+  // Excel 的 epoch 是 1900-01-01（但错误地认为 1900 是闰年）
+  const excelEpoch = Date.UTC(1899, 11, 31); // 1899-12-31 (Excel day 1 = 1900-01-00... 用这个偏移)
+  const ms = serial * 86400000;
+  // 修正 Excel 的闰年 bug (1900-02-29 不存在)
+  const adjust = serial > 59 ? 86400000 : 0;
+  const d = new Date(excelEpoch + ms - adjust);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 // 智能去重（同日期+同金额+同类别 = 重复）
