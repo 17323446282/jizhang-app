@@ -581,6 +581,59 @@ body {
 }
 .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 
+/* ===== Liquid Funds Breakdown Table ===== */
+.liquid-funds-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.liquid-col-title {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1.5fr;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 8px 0;
+  border-bottom: 2px solid var(--border-color);
+  margin-bottom: 4px;
+}
+.liquid-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1.5fr;
+  align-items: center;
+  padding: 8px 4px;
+  border-bottom: 1px solid #f0ece8;
+}
+.liquid-name {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  padding-left: 4px;
+}
+.liquid-cell {
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.liquid-cell:hover { background: #FFF8F7; }
+.liquid-cell.editing { background: #fff; box-shadow: 0 0 0 2px #D4A0A5 inset; }
+.liquid-cell input {
+  width: 100%;
+  text-align: center;
+  font-size: 13.5px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+}
+
 /* ===== Top Expenses ===== */
 .top-list { list-style: none; }
 .top-item {
@@ -755,6 +808,7 @@ body {
   .savings-bar { height: 44px; }
   .savings-bar-text { font-size: 20px; }
   .chart-row { grid-template-columns: 1fr; }
+  .liquid-funds-grid { grid-template-columns: 1fr; gap: 0; }
   .form-row { grid-template-columns: 1fr; }
   .asset-grid { grid-template-columns: 1fr 1fr; }
   .page-header { flex-direction: column; align-items: flex-start; }
@@ -1104,6 +1158,12 @@ input[type="number"] { -moz-appearance: textfield; }
         <div class="chart-container" id="incomePieChart"></div>
         <div class="chart-legend" id="incomeLegend"></div>
       </div>
+    </div>
+
+    <!-- Liquid Funds Breakdown -->
+    <div class="card" id="liquidFundsCard">
+      <div class="card-title" style="text-align:center; font-size:15px; font-weight:600;">本月流动资金分项汇总</div>
+      <div id="liquidFundsTable"></div>
     </div>
 
     <!-- Top Expenses -->
@@ -2150,6 +2210,7 @@ function refreshMonthlyView() {
   updateMonthlyMetrics(range);
   renderMonthlyCharts(range);
   renderTopExpenses(range);
+  renderLiquidFunds(range);
   renderMonthlyBills(range);
 }
 
@@ -2199,6 +2260,50 @@ function editMonthlyField(mKey, field, cardEl) {
     let mData = JSON.parse(localStorage.getItem(mKey)||'{}');
     mData[field] = v;
     localStorage.setItem(mKey, JSON.stringify(mData));
+    refreshMonthlyView();
+  };
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => { if(e.key==='Enter')save(); if(e.key==='Escape')refreshMonthlyView(); });
+}
+
+// Default items for each person
+const LIQUID_ITEMS_XIAN = ['微信','支付宝','银行卡','职工普惠','红旗券','微信立减金','理财','信用卡'];
+const LIQUID_ITEMS_WEIWEI = ['微信','支付宝','银行卡','公司福利','红旗券','微信立减金','理财','信用卡'];
+
+function renderLiquidFunds(range) {
+  const mKey = 'wb_finance_liquid_' + range.labelYear + '-' + String(range.labelMonth).padStart(2,'0');
+  let data = JSON.parse(localStorage.getItem(mKey)||'{}');
+  if (!data.xian) data.xian = LIQUID_ITEMS_XIAN.map(n=>({name:n,amount:'',note:''}));
+  if (!data.weiwei) data.weiwei = LIQUID_ITEMS_WEIWEI.map(n=>({name:n,amount:'',note:''}));
+
+  const container = document.getElementById('liquidFundsTable');
+  container.innerHTML = `
+    <div class="liquid-funds-grid">
+      <div>
+        <div class="liquid-col-title"><span>仙仙</span><span>金额</span><span>备注</span></div>
+        ${data.xian.map((item,i)=>`<div class="liquid-row"><div class="liquid-name">${item.name}</div><div class="liquid-cell" ondblclick="editLiquidCell('${mKey}','xian',${i},'amount',this)">${item.amount||''}</div><div class="liquid-cell" ondblclick="editLiquidCell('${mKey}','xian',${i},'note',this)">${item.note||''}</div></div>`).join('')}
+      </div>
+      <div>
+        <div class="liquid-col-title"><span>伟伟</span><span>金额</span><span>备注</span></div>
+        ${data.weiwei.map((item,i)=>`<div class="liquid-row"><div class="liquid-name">${item.name}</div><div class="liquid-cell" ondblclick="editLiquidCell('${mKey}','weiwei',${i},'amount',this)">${item.amount||''}</div><div class="liquid-cell" ondblclick="editLiquidCell('${mKey}','weiwei',${i},'note',this)">${item.note||''}</div></div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function editLiquidCell(mKey, person, index, field, cellEl) {
+  const data = JSON.parse(localStorage.getItem(mKey)||'{}');
+  const currentVal = (data[person]&&data[person][index]) ? data[person][index][field]||'' : '';
+  const input = document.createElement('input');
+  input.value = currentVal;
+  cellEl.classList.add('editing');
+  cellEl.innerHTML = ''; cellEl.appendChild(input); input.focus(); input.select();
+  const save = () => {
+    let d = JSON.parse(localStorage.getItem(mKey)||'{}');
+    if(!d.xian) d.xian = LIQUID_ITEMS_XIAN.map(n=>({name:n,amount:'',note:''}));
+    if(!d.weiwei) d.weiwei = LIQUID_ITEMS_WEIWEI.map(n=>({name:n,amount:'',note:''}));
+    d[person][index][field] = input.value.trim();
+    localStorage.setItem(mKey, JSON.stringify(d));
     refreshMonthlyView();
   };
   input.addEventListener('blur', save);
