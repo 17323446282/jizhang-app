@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>阿双的记账工作台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23D4A0A5'/><circle cx='16' cy='16' r='9' fill='%23ffffff'/><text x='16' y='21' font-size='13' font-weight='700' fill='%23C0888E' text-anchor='middle' font-family='sans-serif'>¥</text></svg>">
 <style>
 /* ===== Reset & Base ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,6 +29,21 @@
   --radius-lg: 16px;
   --nav-width: 200px;
   --shadow-card: 0 1px 3px rgba(0,0,0,0.06);
+  /* ===== 字号阶梯（统一层级）===== */
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 18px;
+  --fs-2xl: 20px;
+  --fs-3xl: 24px;
+  --fs-4xl: 30px;
+  /* ===== 字重 ===== */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
 }
 html { font-size: 16px; }
 body {
@@ -149,9 +165,26 @@ body {
   gap: 12px;
 }
 .page-header h2 {
-  font-size: 20px;
-  font-weight: 500;
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.page-header h2::after {
+  content: '';
+  display: block;
+  width: 30px;
+  height: 3px;
+  margin-top: 10px;
+  border-radius: 2px;
+  background: var(--color-primary);
+}
+/* ===== 数字统一等宽对齐（金额 / 指标 / 表格）===== */
+.metric-value, .savings-value, .month-nav-text, .amount-income, .amount-expense,
+.top-amount, .bill-table td, .budget-table td, .dist-table td {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
@@ -193,10 +226,15 @@ body {
   box-shadow: var(--shadow-card);
   padding: 20px 24px;
   margin-bottom: 20px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.10);
+  transform: translateY(-2px);
 }
 .card-title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
   color: var(--text-primary);
   margin-bottom: 16px;
   display: flex;
@@ -224,9 +262,10 @@ body {
   margin-bottom: 6px;
 }
 .metric-value {
-  font-size: 22px;
-  font-weight: 500;
+  font-size: var(--fs-3xl);
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 .metric-value.income { color: var(--income-green); }
 .metric-value.expense { color: var(--expense-red); }
@@ -252,8 +291,8 @@ body {
   margin-bottom: 20px;
 }
 .savings-title {
-  font-size: 17px;
-  font-weight: 700;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
   margin-bottom: 20px;
 }
@@ -575,6 +614,301 @@ body {
 }
 .btn-delete:hover { color: var(--expense-red); border-color: var(--expense-red); }
 
+/* ===== Bookkeeping Page: New Layout (Stats + 3 Cards + Actions) ===== */
+.bk-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.bk-stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  text-align: center;
+  box-shadow: var(--shadow-card);
+}
+.bk-stat-label {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.bk-stat-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.bk-stat-val small { font-size: 11px; font-weight: 400; color: var(--text-muted); }
+.bk-stat-highlight { background: linear-gradient(135deg, #E8F5E9, #F1F8E9); border-color: #A5D6A7; }
+.bk-stat-highlight .bk-stat-val { color: #2E7D32; }
+.bk-stat-warn { background: linear-gradient(135deg, #FFF3E0, #FFF8E1); border-color: #FFCC80; }
+.bk-stat-warn .bk-stat-val { color: #EF6C00; }
+
+/* Three input cards side by side */
+.bk-input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.bk-input-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+}
+.bk-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.bk-card-icon { font-size: 16px; }
+.bk-card-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.bk-card-badge {
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--color-primary);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.bk-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.bk-act-btn {
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-page);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: .15s;
+}
+.bk-act-btn:hover { border-color: var(--color-primary); color: var(--color-primary-dark); }
+
+/* Text input area */
+.bk-text-area-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bk-textarea {
+  width: 100%;
+  flex: 1;
+  min-height: 120px;
+  max-height: 200px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: #FAFAFA;
+  resize: vertical;
+  outline: none;
+  transition: border-color .15s;
+  box-sizing: border-box;
+}
+.bk-textarea:focus { border-color: var(--color-primary); background: #fff; }
+.bk-textarea::placeholder { color: var(--text-muted); }
+.bk-text-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+/* Dropzone (image & file) */
+.bk-dropzone {
+  flex: 1;
+  min-height: 140px;
+  border: 1.5px dashed var(--border-color);
+  border-radius: 10px;
+  background: #FAFAFA;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: .18s;
+}
+.bk-dropzone:hover { border-color: var(--color-primary); background: var(--color-primary-bg); }
+.bk-dropzone-icon { opacity: .45; }
+.bk-dropzone-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.5;
+}
+.bk-dropzone-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Image thumbnails */
+.bk-img-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+.bk-img-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1.5px solid var(--border-color);
+  position: relative;
+}
+.bk-img-thumb .rm-btn {
+  position: absolute;
+  top: -5px; right: -5px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--expense-red);
+  color: #fff;
+  font-size: 10px;
+  border: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+/* File list */
+.bk-file-list {
+  margin-top: 8px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+.bk-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #F7F7F7;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.bk-file-item .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.bk-file-item .fsize { color: var(--text-muted); font-size: 11px; }
+.bk-file-item .fremove { cursor: pointer; color: var(--expense-red); font-size: 14px; border: none; background: none; }
+
+/* Action button row */
+.bk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  flex-wrap: wrap;
+}
+.bk-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 20px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .15s;
+}
+.bk-btn-primary:hover { background: var(--color-primary-dark); }
+.bk-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 16px;
+  background: #FFF0F3;
+  color: var(--color-primary-dark);
+  border: 1px solid var(--color-primary-light);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: .15s;
+}
+.bk-btn-secondary:hover { background: #FFE0E6; }
+.bk-btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: .15s;
+}
+.bk-btn-link:hover { color: var(--color-primary); background: var(--color-primary-bg); }
+.bk-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 18px;
+  background: #fff;
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: .15s;
+}
+.bk-btn-outline:hover { border-color: var(--color-primary); color: var(--color-primary-dark); }
+
+/* Review section spacing */
+.bk-review-section { margin-top: 0; }
+.bk-category-section { margin-top: 16px; }
+
+/* Mobile: bookkeeping page */
+@media (max-width: 768px) {
+  .bk-stats-bar { grid-template-columns: repeat(3, 1fr); }
+  .bk-stats-bar .bk-stat-card:nth-child(4),
+  .bk-stats-bar .bk-stat-card:nth-child(5) { grid-column: span 1; }
+  .bk-input-row { grid-template-columns: 1fr; }
+  .bk-action-bar { flex-wrap: wrap; }
+  .bk-btn-primary, .bk-btn-secondary { flex: 1; min-width: 120px; }
+  .bk-textarea { min-height: 90px; }
+  .bk-dropzone { min-height: 110px; }
+}
+
 /* ===== Distribution Row (3 equal panels: pie + color table) ===== */
 .dist-row {
   display: grid;
@@ -624,8 +958,10 @@ body {
 .dist-pie { }
 .dist-table-wrap {
   flex: 1;
+  overflow-x: auto;
   overflow-y: auto;
   max-height: calc(100vh - 320px);
+  -webkit-overflow-scrolling: touch;
 }
 .dist-table {
   width: 100%;
@@ -954,6 +1290,10 @@ body {
   .budget-table th, .budget-table td { padding: 8px 10px; }
   .month-nav-btn { width: 36px; height: 36px; }
   .month-nav-text { font-size: 18px; min-width: 120px; }
+  .card { padding: 16px 14px; }
+  .dist-card { padding: 12px 8px; }
+  .metrics-grid { gap: 10px; }
+  .page-header h2 { font-size: var(--fs-2xl); }
 }
 
 @media (max-width: 400px) {
@@ -1049,6 +1389,195 @@ body {
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="number"] { -moz-appearance: textfield; }
+
+/* ===== Theme Toggle Button (Item 2) ===== */
+.theme-toggle { justify-content: center; }
+
+/* ===== Dark Mode (Item 2) ===== */
+[data-theme="dark"] {
+  --bg-page: #1e1a1c;
+  --bg-nav: #241e21;
+  --bg-card: #2a2427;
+  --color-primary: #D9A6AB;
+  --color-primary-dark: #E8B4B8;
+  --color-primary-light: #5c4348;
+  --color-primary-bg: #3a2c30;
+  --text-primary: #F2ECE9;
+  --text-secondary: #BBA9A4;
+  --text-muted: #897B77;
+  --border-color: rgba(255,255,255,0.10);
+  --border-hover: rgba(255,255,255,0.20);
+  --income-green: #5DCAA5;
+  --expense-red: #E26363;
+  --warning-amber: #EF9F27;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.45);
+}
+[data-theme="dark"] body { background: var(--bg-page); }
+[data-theme="dark"] .btn:hover { background: rgba(255,255,255,0.06); border-color: var(--border-hover); }
+[data-theme="dark"] .asset-item { background: rgba(255,255,255,0.04); }
+[data-theme="dark"] .budget-table th,
+[data-theme="dark"] .bill-table th { background: rgba(255,255,255,0.05); }
+[data-theme="dark"] .type-toggle button { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
+[data-theme="dark"] .parse-area,
+[data-theme="dark"] .category-detail,
+[data-theme="dark"] .code-box { background: rgba(255,255,255,0.04); }
+[data-theme="dark"] .progress-section {
+  background: linear-gradient(135deg, #34292d 0%, #2a2427 100%);
+  border-color: var(--color-primary-light);
+}
+[data-theme="dark"] .savings-bar { background: rgba(255,255,255,0.08); }
+[data-theme="dark"] .savings-row { border-bottom-color: rgba(255,255,255,0.08); }
+[data-theme="dark"] .bill-table tr:hover td { background: rgba(255,255,255,0.05); }
+[data-theme="dark"] .dist-table th { background: rgba(255,255,255,0.06); border-color: var(--border-color); }
+[data-theme="dark"] .dist-table td { border-color: var(--border-color); }
+[data-theme="dark"] .dist-pie-wrap { border-bottom-color: var(--border-color); }
+[data-theme="dark"] .dist-table tr:hover td { background: rgba(255,255,255,0.05); }
+[data-theme="dark"] .dist-editable:hover { background: rgba(226,99,99,0.18); }
+[data-theme="dark"] .liquid-row { border-bottom-color: var(--border-color); }
+[data-theme="dark"] .liquid-cell:hover { background: rgba(255,255,255,0.06); }
+[data-theme="dark"] .liquid-cell.editing { background: var(--bg-card); }
+[data-theme="dark"] .editable-field:hover,
+[data-theme="dark"] .savings-label.editable:hover,
+[data-theme="dark"] .savings-value.editable:hover,
+[data-theme="dark"] .budget-editable:hover { background: var(--color-primary-bg); }
+[data-theme="dark"] .month-nav-btn { background: var(--bg-card); }
+[data-theme="dark"] .modal-overlay { background: rgba(0,0,0,0.6); }
+[data-theme="dark"] .card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+[data-theme="dark"] .nav-link:hover { background: rgba(217,166,171,0.12); }
+[data-theme="dark"] .data-warning { background: rgba(239,159,39,0.12); border-color: rgba(239,159,39,0.4); color: #E8C07A; }
+[data-theme="dark"] .sync-status.connected { background: rgba(93,202,165,0.15); color: #8FE0C4; }
+[data-theme="dark"] .sync-status.offline { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+[data-theme="dark"] .sync-status.syncing { background: rgba(239,159,39,0.15); color: #E8C07A; }
+[data-theme="dark"] .settings-sync-bar.connected { background: rgba(93,202,165,0.15); color: #8FE0C4; }
+[data-theme="dark"] .settings-sync-bar.offline { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+[data-theme="dark"] .settings-sync-bar.syncing { background: rgba(239,159,39,0.15); color: #E8C07A; }
+[data-theme="dark"] .settings-sync-bar.error { background: rgba(226,99,99,0.15); color: #F0A0A0; }
+/* ===== 智能识别页 (recognize) ===== */
+:root{ --rec-wx:#07C160; --rec-ali:#1677FF; --rec-tb:#FF5000; --rec-pdd:#E22E1F; }
+.main-content:has(#page-bookkeeping.active){ max-width:none; }
+
+.rec-steps{display:flex; align-items:center; gap:0; flex-wrap:wrap; margin-bottom:20px;}
+.rec-step{display:flex; align-items:center; gap:10px;}
+.rec-step .dot{width:28px; height:28px; border-radius:50%; display:grid; place-items:center; font-size:13px; font-weight:600; background:var(--bg-card); border:1.5px solid var(--border-color); color:var(--text-muted); flex:0 0 auto;}
+.rec-step .lbl{font-size:13px; font-weight:500; color:var(--text-muted); white-space:nowrap;}
+.rec-step .bar{flex:0 0 auto; width:46px; height:2px; background:var(--border-color); margin:0 6px;}
+.rec-step.done .dot{background:var(--color-primary-bg); border-color:var(--color-primary); color:var(--color-primary-dark);}
+.rec-step.done .lbl{color:var(--text-secondary);}
+.rec-step.active .dot{background:var(--color-primary); border-color:var(--color-primary); color:#fff; box-shadow:0 0 0 4px var(--color-primary-bg);}
+.rec-step.active .lbl{color:var(--text-primary); font-weight:600;}
+
+.rec-tabs{display:flex; gap:6px; background:var(--bg-page); padding:5px; border-radius:10px; width:fit-content; border:1px solid var(--border-color);}
+.rec-tab{border:none; background:transparent; font-family:inherit; font-size:13px; font-weight:500; color:var(--text-secondary); padding:8px 15px; border-radius:7px; cursor:pointer; display:flex; align-items:center; gap:7px; transition:.15s;}
+.rec-tab svg{width:16px; height:16px;}
+.rec-tab:hover{color:var(--text-primary);}
+.rec-tab.on{background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-color); box-shadow:var(--shadow-card);}
+
+/* 记账页 · 三段切换 */
+.bk-tabs{display:flex; gap:6px; background:var(--bg-page); padding:5px; border-radius:12px; width:fit-content; border:1px solid var(--border-color); margin-bottom:18px;}
+.bk-tab{border:none; background:transparent; font-family:inherit; font-size:13.5px; font-weight:500; color:var(--text-secondary); padding:9px 22px; border-radius:8px; cursor:pointer; transition:.15s;}
+.bk-tab:hover{color:var(--text-primary);}
+.bk-tab.on{background:var(--bg-card); color:var(--color-primary-dark); border:1px solid var(--color-primary-light); box-shadow:var(--shadow-card); font-weight:600;}
+
+/* 图片缩略图网格 */
+.bk-thumbs{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}
+.bk-thumb{width:74px; height:74px; border-radius:10px; border:1px solid var(--border-color); background:#FAFAFA; overflow:hidden; display:grid; place-items:center; font-size:11px; color:var(--text-muted); padding:4px; text-align:center; line-height:1.3;}
+.bk-thumb img{width:100%; height:100%; object-fit:cover; border-radius:7px;}
+
+.rec-dropzone{margin-top:16px; border:1.5px dashed var(--border-color); border-radius:var(--radius-md); background:#FAFAFA; padding:24px; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; transition:.18s; cursor:pointer;}
+.rec-dropzone:hover{border-color:var(--color-primary); background:var(--color-primary-bg);}
+.rec-dropzone .ic{width:44px; height:44px; border-radius:12px; background:var(--bg-card); border:1px solid var(--border-color); display:grid; place-items:center;}
+.rec-dropzone .ic svg{width:22px; height:22px; color:var(--color-primary);}
+.rec-dropzone strong{font-size:14px; font-weight:500;}
+.rec-dropzone span{font-size:12.5px; color:var(--text-secondary);}
+
+.rec-sources{margin-top:18px;}
+.rec-sources .lbl{font-size:12px; font-weight:500; color:var(--text-secondary); margin-bottom:10px;}
+.rec-chips{display:flex; flex-wrap:wrap; gap:9px;}
+.rec-chip{display:inline-flex; align-items:center; gap:7px; padding:8px 13px; border-radius:999px; border:1.5px solid var(--border-color); background:var(--bg-card); font-size:13px; font-weight:500; color:var(--text-secondary); cursor:pointer; transition:.16s; user-select:none;}
+.rec-chip .pdot{width:8px; height:8px; border-radius:50%;}
+.rec-chip:hover{border-color:var(--text-muted);}
+.rec-chip.on{border-color:var(--color-primary); color:var(--text-primary); background:var(--color-primary-bg);}
+
+.rec-importfoot{display:flex; align-items:center; justify-content:space-between; margin-top:20px; padding-top:18px; border-top:1px solid var(--border-color); gap:14px;}
+.rec-hint{font-size:12.5px; color:var(--text-muted); display:flex; align-items:center; gap:7px;}
+
+.rec-banner{display:flex; align-items:center; gap:14px; padding:15px 18px; border-radius:var(--radius-md); background:linear-gradient(135deg, var(--color-primary-bg), var(--bg-card)); border:1px solid var(--color-primary-light); margin-bottom:18px;}
+.rec-banner .badge{width:40px; height:40px; border-radius:12px; background:var(--color-primary); display:grid; place-items:center; flex:0 0 auto;}
+.rec-banner .badge svg{width:21px; height:21px; color:#fff;}
+.rec-banner .txt{font-size:13.5px; color:var(--color-primary-dark); line-height:1.5; flex:1;}
+.rec-banner .txt b{font-weight:700;}
+
+.rec-switch{position:relative; width:44px; height:24px; flex:0 0 auto; cursor:pointer;}
+.rec-switch input{display:none;}
+.rec-switch .track{position:absolute; inset:0; background:var(--text-muted); border-radius:999px; transition:.2s;}
+.rec-switch .knob{position:absolute; top:3px; left:3px; width:18px; height:18px; background:#fff; border-radius:50%; box-shadow:var(--shadow-card); transition:.2s;}
+.rec-switch input:checked + .track{background:var(--color-primary);}
+.rec-switch input:checked + .track + .knob{transform:translateX(20px);}
+
+.rec-src-tag{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:500; padding:3px 9px; border-radius:7px; background:#FAFAFA; border:1px solid var(--border-color); color:var(--text-secondary);}
+.rec-src-tag .pdot{width:7px; height:7px; border-radius:50%;}
+.rec-st{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:500; padding:3px 9px; border-radius:7px; white-space:nowrap;}
+.rec-st.new{background:rgba(55,138,221,.12); color:#378ADD;}
+.rec-st.merged{background:#F1EFE8; color:var(--text-muted);}
+.rec-st.dup{background:rgba(226,75,74,.08); color:var(--expense-red);}
+
+.rec-group{margin-top:14px; border:1px solid var(--border-color); border-radius:var(--radius-md); overflow:hidden; background:var(--bg-card);}
+.rec-group:first-of-type{margin-top:0;}
+.rec-group-head{display:flex; align-items:center; gap:13px; padding:14px 16px; cursor:pointer; user-select:none;}
+.rec-group-head .gh-ic{width:32px; height:32px; border-radius:10px; background:var(--color-primary-bg); display:grid; place-items:center; flex:0 0 auto;}
+.rec-group-head .gh-ic svg{width:18px; height:18px; color:var(--color-primary-dark);}
+.rec-group-head .gh-main{flex:1; min-width:0;}
+.rec-group-head .gh-name{font-size:14px; font-weight:500;}
+.rec-group-head .gh-meta{font-size:12px; color:var(--text-muted); margin-top:2px;}
+.rec-group-head .gh-amt{font-weight:500; font-size:15px; color:var(--text-primary);}
+.rec-group-head .chev{width:18px; height:18px; color:var(--text-muted); transition:.2s; flex:0 0 auto;}
+.rec-group.open .chev{transform:rotate(180deg);}
+.rec-gh-save{font-size:11.5px; font-weight:500; color:var(--color-primary-dark); background:var(--color-primary-bg); padding:3px 8px; border-radius:6px; white-space:nowrap;}
+.rec-group-body{max-height:0; overflow:hidden; transition:max-height .28s ease;}
+.rec-group.open .rec-group-body{max-height:240px;}
+.rec-src-row{display:flex; align-items:center; gap:11px; padding:10px 16px 10px 62px; border-top:1px dashed var(--border-color);}
+.rec-src-row .sr-dot{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+.rec-src-row .sr-name{font-size:13px; font-weight:500; flex:1;}
+.rec-src-row .sr-name .role{font-size:11px; font-weight:500; color:var(--color-primary-dark); margin-left:7px; background:var(--color-primary-bg); padding:2px 7px; border-radius:5px;}
+.rec-src-row .sr-amt{font-size:12.5px; color:var(--text-secondary);}
+.rec-src-row.master{background:#FAFAFA;}
+
+.rec-guide-row{display:flex; align-items:flex-start; gap:11px; padding:12px 0; border-bottom:1px solid var(--border-color);}
+.rec-guide-row:last-child{border-bottom:none;}
+.rec-guide-row .g-ic{width:30px; height:30px; border-radius:9px; display:grid; place-items:center; font-size:12px; font-weight:600; color:#fff; flex:0 0 auto;}
+.rec-guide-row .g-body{flex:1; min-width:0;}
+.rec-guide-row .g-name{font-size:13px; font-weight:500;}
+.rec-guide-row .g-steps{font-size:12px; color:var(--text-secondary); margin-top:3px; line-height:1.6;}
+
+.rec-stat{display:flex; flex-direction:column; gap:4px; padding:12px 0; border-bottom:1px solid var(--border-color);}
+.rec-stat:last-child{border-bottom:none; padding-bottom:2px;}
+.rec-stat .s-top{display:flex; align-items:center; justify-content:space-between;}
+.rec-stat .s-label{font-size:12.5px; color:var(--text-secondary);}
+.rec-stat .s-val{font-weight:500; font-size:17px; color:var(--text-primary);}
+.rec-stat .s-val small{font-size:12px; color:var(--text-muted); font-weight:500; margin-left:3px;}
+.rec-stat .s-sub{font-size:11.5px; color:var(--text-muted);}
+.rec-stat.accent .s-val{color:var(--color-primary-dark);}
+
+.rec-freq{display:flex; gap:6px; background:var(--bg-page); padding:4px; border-radius:10px; margin:4px 0 12px; border:1px solid var(--border-color);}
+.rec-freq button{flex:1; border:none; background:transparent; font-family:inherit; font-size:12.5px; font-weight:500; color:var(--text-secondary); padding:7px 0; border-radius:7px; cursor:pointer; transition:.16s;}
+.rec-freq button.on{background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-color); box-shadow:var(--shadow-card);}
+.rec-nextrun{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text-secondary); padding:11px 13px; background:#FAFAFA; border-radius:var(--radius-sm); border:1px solid var(--border-color);}
+.rec-nextrun svg{width:16px; height:16px; color:var(--color-primary);}
+.rec-note{font-size:12px; color:var(--text-muted); margin-top:12px; line-height:1.6;}
+
+.rec-toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(14px); background:var(--text-primary); color:#fff; font-size:13.5px; font-weight:500; padding:12px 20px; border-radius:12px; box-shadow:var(--shadow-card); opacity:0; pointer-events:none; transition:.26s; z-index:300; display:flex; align-items:center; gap:9px;}
+.rec-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+.rec-toast svg{width:17px; height:17px; color:var(--income-green);}
+
+.rec-fade{animation:recFade .4s ease both;}
+@keyframes recFade{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);}}
+
+/* Dark mode 适配 */
+[data-theme="dark"] .rec-dropzone{background:rgba(255,255,255,0.04);}
+[data-theme="dark"] .rec-src-tag{background:rgba(255,255,255,0.06);}
+[data-theme="dark"] .rec-nextrun{background:rgba(255,255,255,0.05);}
+[data-theme="dark"] .rec-src-row.master{background:rgba(255,255,255,0.05);}
+[data-theme="dark"] .rec-st.merged{background:rgba(255,255,255,0.07);}
 </style>
 </head>
 <body>
@@ -1069,7 +1598,11 @@ input[type="number"] { -moz-appearance: textfield; }
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand">
     <h1>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2" y="2" width="20" height="20" rx="6" fill="var(--color-primary)"/>
+        <circle cx="12" cy="12" r="6.5" fill="#FFFFFF"/>
+        <text x="12" y="15.9" font-size="9.5" font-weight="700" fill="var(--color-primary-dark)" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif">¥</text>
+      </svg>
       阿双的记账工作台
     </h1>
   </div>
@@ -1102,6 +1635,10 @@ input[type="number"] { -moz-appearance: textfield; }
     </a></li>
   </ul>
   <div class="sidebar-footer">
+    <button class="btn btn-sm theme-toggle" id="themeToggle" style="width:100%;margin-bottom:10px" onclick="toggleTheme()" aria-pressed="false">
+      <span class="theme-icon">☀️</span>
+      <span class="theme-label">亮色模式</span>
+    </button>
     <button class="btn btn-sm" style="width:100%" onclick="exportData()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       导出 JSON 备份
@@ -1121,7 +1658,7 @@ input[type="number"] { -moz-appearance: textfield; }
   <div class="page active" id="page-overview">
     <div class="page-header">
       <div>
-        <h2 id="yearTitle" style="font-size:22px;font-weight:700;color:var(--text-primary);cursor:pointer;" ondblclick="editYearTitle()" title="双击编辑年度标题">本年度（2026年3月～2027年3月）</h2>
+        <h2 id="yearTitle" style="cursor:pointer" ondblclick="editYearTitle()" title="双击编辑年度标题">本年度（2026年3月～2027年3月）</h2>
       </div>
       <div class="header-actions">
         <input type="date" id="snapshotDatePicker" onchange="updateSnapshotDate(this.value)" style="border:1px solid var(--border-color);border-radius:6px;padding:6px 10px;font-size:13px;">
@@ -1151,13 +1688,13 @@ input[type="number"] { -moz-appearance: textfield; }
         <!-- Asset Snapshot -->
         <div class="card">
           <div class="card-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M12 4v16"/></svg>
             资产快照（手动填写，每月更新一次）
           </div>
           <div class="asset-grid" id="assetGrid"></div>
           <div style="margin-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:12px;">
             <span style="font-size:13px;color:var(--text-secondary)">净资产总额：</span>
-            <span style="font-size:22px;font-weight:500;color:var(--color-primary-dark)" id="netWorthTotal">¥0</span>
+            <span class="metric-value primary" id="netWorthTotal">¥0</span>
           </div>
         </div>
       </div>
@@ -1167,7 +1704,7 @@ input[type="number"] { -moz-appearance: textfield; }
         <!-- Annual Budget Plan -->
         <div class="card">
           <div class="card-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             本年度预算计划
           </div>
           <table class="budget-table" id="budgetTable">
@@ -1179,40 +1716,146 @@ input[type="number"] { -moz-appearance: textfield; }
     </div>
   </div>
 
-  <!-- ========== PAGE: BOOKKEEPING ========== -->
+    <!-- ========== PAGE: BOOKKEEPING ========== -->
   <div class="page" id="page-bookkeeping">
     <div class="page-header">
       <h2>记账</h2>
       <div class="header-actions">
-        <button class="btn btn-primary" onclick="showAddForm()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          手动录入
-        </button>
+        <span style="font-size:12.5px;color:var(--text-muted)">手动文字 · 图片附件 · 账单导入，三合一</span>
       </div>
     </div>
 
-    <!-- Smart Parse Area -->
-    <div class="parse-area" id="parseArea">
-      <div class="parse-area-title">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-        文字智能识别记账
+    <!-- ===== 顶部统计栏 ===== -->
+    <div class="bk-stats-bar" id="bkStatsBar">
+      <div class="bk-stat-card"><div class="bk-stat-label">已选文字</div><div class="bk-stat-val" id="statTextCount">0</div></div>
+      <div class="bk-stat-card"><div class="bk-stat-label">已选图片</div><div class="bk-stat-val" id="statImgCount">0</div></div>
+      <div class="bk-stat-card"><div class="bk-stat-label">账单文件</div><div class="bk-stat-val" id="statFileCount">0</div></div>
+      <div class="bk-stat-card bk-stat-highlight"><div class="bk-stat-label">上次结果</div><div class="bk-stat-val" id="statLastResult">—<small>条</small></div></div>
+      <div class="bk-stat-card bk-stat-warn"><div class="bk-stat-label">待审核</div><div class="bk-stat-val" id="statPending">0</div></div>
+    </div>
+
+    <!-- ===== 三栏输入卡片 ===== -->
+    <div class="bk-input-row" id="bkInputRow">
+
+      <!-- 卡片1：账单文字 -->
+      <div class="bk-input-card">
+        <div class="bk-card-header">
+          <span class="bk-card-icon">📝</span>
+          <span class="bk-card-title">账单文字</span>
+          <span class="bk-card-badge" id="textBadge">0条</span>
+        </div>
+        <div class="bk-card-actions">
+          <button class="bk-act-btn" onclick="bkAddPhotoToText()" title="添加照片作为参考">+添加照片</button>
+          <button class="bk-act-btn" onclick="bkClearText()">清空</button>
+        </div>
+        <div class="bk-text-area-wrap">
+          <textarea id="bkTextInput" class="bk-textarea" placeholder="在此粘贴或输入文字...&#10;&#10;支持格式示例：&#10;2026年8月12日 宝宝奶粉 ¥398 支出&#10;昨天 工资到账 ¥8000 收入&#10;8月3日 交房租 ¥2000 住房房租" oninput="bkOnTextInput()"></textarea>
+          <div class="bk-text-hint" id="bkTextHint">粘贴一段包含日期、金额、摘要的文字，系统将自动识别解析为结构化账单</div>
+        </div>
       </div>
-      <p class="parse-hint">粘贴一段文字，自动识别金额、日期、类别。例如：「8月3日 买水果 50」或「昨天 工资到账 8500 收入」</p>
-      <textarea class="form-textarea" id="parseInput" rows="2" placeholder="在此粘贴文字..." oninput="onParseInput()"></textarea>
-      <div class="parse-result" id="parseResult"></div>
-      <div style="margin-top:10px;display:flex;gap:10px;">
-        <button class="btn btn-sm btn-primary" onclick="doParse()">识别解析</button>
-        <button class="btn btn-sm" onclick="acceptParseResult()">确认录入</button>
+
+      <!-- 卡片2：截图图片 -->
+      <div class="bk-input-card">
+        <div class="bk-card-header">
+          <span class="bk-card-icon">📷</span>
+          <span class="bk-card-title">截图图片</span>
+          <span class="bk-card-badge" id="imgBadge">0张</span>
+        </div>
+        <div class="bk-card-actions">
+          <button class="bk-act-btn" onclick="document.getElementById('bkImgInput').click()">+添加图片</button>
+          <button class="bk-act-btn" onclick="bkClearImages()">清空</button>
+        </div>
+        <div class="bk-dropzone" id="bkImgDropzone" onclick="document.getElementById('bkImgInput').click()">
+          <div class="bk-dropzone-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M5 17l4.5-4.5L13 16l3-3 3 3"/></svg>
+          </div>
+          <p class="bk-dropzone-text">请添加图片或<br>拖拽图片至此处</p>
+          <p class="bk-dropzone-hint">支持 JPG / PNG / HEIC 拖拽输入</p>
+          <input type="file" id="bkImgInput" accept="image/*" multiple hidden onchange="bkHandleImages(this.files)">
+        </div>
+        <div class="bk-img-thumbs" id="bkImgThumbs"></div>
+      </div>
+
+      <!-- 卡片3：账单文件 -->
+      <div class="bk-input-card">
+        <div class="bk-card-header">
+          <span class="bk-card-icon">📄</span>
+          <span class="bk-card-title">账单文件</span>
+          <span class="bk-card-badge" id="fileBadge">0个</span>
+        </div>
+        <div class="bk-card-actions">
+          <button class="bk-act-btn" onclick="document.getElementById('bkFileInput').click()">+添加文件</button>
+          <button class="bk-act-btn" onclick="bkClearFiles()">清空</button>
+        </div>
+        <div class="bk-dropzone" id="bkFileDropzone" onclick="document.getElementById('bkFileInput').click()">
+          <div class="bk-dropzone-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M9 4v4h6"/></svg>
+          </div>
+          <p class="bk-dropzone-text">请选择文件或<br>拖拽文件至此处</p>
+          <p class="bk-dropzone-hint">支持 CSV / XLSX 拖拽导入</p>
+          <input type="file" id="bkFileInput" accept=".csv,.xlsx,.xls" multiple hidden onchange="bkHandleFiles(this.files)">
+        </div>
+        <div class="bk-file-list" id="bkFileList"></div>
+      </div>
+
+    </div><!-- /bk-input-row -->
+
+    <!-- ===== 操作按钮行 ===== -->
+    <div class="bk-action-bar">
+      <button class="bk-btn-primary" onclick="bkRecognize()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        识别解析
+      </button>
+      <button class="bk-btn-secondary" onclick="bkReRecognize()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+        重新识别
+      </button>
+      <button class="bk-btn-link" onclick="bkSmartDedup()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7h8a4 4 0 010 8H8a4 4 0 010-8z"/><path d="M8 15h6a4 4 0 010-8"/></svg>
+        智能去重
+      </button>
+      <button class="bk-btn-outline" onclick="bkConfirmAll()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        确认录入
+      </button>
+    </div>
+
+    <!-- ===== 最近账单表格 ===== -->
+    <div class="card bk-review-section">
+      <div class="card-title flex-between">
+        <span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          最近账单
+        </span>
+        <span style="font-size:12px;color:var(--text-muted)" id="billCountBadge"></span>
+      </div>
+      <div class="bill-table-wrap">
+        <table class="bill-table" id="billTable">
+          <thead><tr><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>操作</th></tr></thead>
+          <tbody id="billTableBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-state hidden" id="billsEmpty">
+        <svg class="brand-illus" width="96" height="96" viewBox="0 0 120 120" fill="none" style="opacity:.92" aria-hidden="true">
+          <rect x="28" y="42" width="64" height="56" rx="14" fill="#FBEAF0" stroke="var(--color-primary)" stroke-width="3"/>
+          <path d="M28 56 q32 -22 64 0" stroke="var(--color-primary)" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <text x="60" y="86" font-size="30" font-weight="700" fill="var(--color-primary)" text-anchor="middle" font-family="sans-serif">¥</text>
+          <path d="M94 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="#EF9F27"/>
+        </svg>
+        <p>暂无账单记录</p>
       </div>
     </div>
 
-    <!-- Category Reference -->
-    <div class="card">
-      <div class="card-title">分类参考（点击查看详解）</div>
+    <!-- ===== 分类参考标签区 ===== -->
+    <div class="card bk-category-section">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        分类参考（点击查看详情）
+      </div>
       <div id="categoryReference"></div>
     </div>
 
-    <!-- Manual Entry Form (hidden by default) -->
+    <!-- ===== 隐藏：手动录入表单 ===== -->
     <div class="card hidden" id="addFormCard">
       <div class="card-title">录入账单</div>
       <form id="billForm" onsubmit="submitBill(event)">
@@ -1252,29 +1895,41 @@ input[type="number"] { -moz-appearance: textfield; }
       </form>
     </div>
 
-    <!-- Recent Bills -->
-    <div class="card">
-      <div class="card-title flex-between">
-        <span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><list-icon-placeholder/></svg>
-          最近账单
-        </span>
-        <span style="font-size:12px;color:var(--text-muted)" id="billCountBadge"></span>
+    <!-- ===== 隐藏：识别结果审核面板 ===== -->
+    <div id="recResults" class="hidden">
+      <div class="rec-banner" id="recBanner">
+        <div class="badge"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7h8a4 4 0 010 8H8a4 4 0 010-8z"/><path d="M8 15h6a4 4 0 010-8"/></svg></div>
+        <div class="txt" id="recBannerTxt"></div>
+        <label class="rec-switch"><input type="checkbox" id="recDedupToggle" checked><span class="track"></span><span class="knob"></span></label>
       </div>
-      <div class="bill-table-wrap">
-        <table class="bill-table" id="billTable">
-          <thead><tr><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>操作</th></tr></thead>
-          <tbody id="billTableBody"></tbody>
-        </table>
+      <div class="card">
+        <div class="card-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          识别结果（请审核后确认入账）
+        </div>
+        <div class="bill-table-wrap">
+          <table class="bill-table" id="recTbl">
+            <thead><tr><th><input type="checkbox" id="recSelAll" onchange="toggleRecSelectAll()"></th><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="recTblBody"></tbody>
+          </table>
+        </div>
       </div>
-      <div class="empty-state hidden" id="billsEmpty">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        <p>暂无账单记录</p>
+      <div class="card" id="recMergeCard">
+        <div class="card-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l-3 4 3 4m10-8l3 4-3 4M14 4l-4 16"/></svg>
+          智能去重 · 合并记录
+          <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto;">同一笔消费在多个来源出现时，只保留一条主记录</span>
+        </div>
+        <div id="recGroupList"></div>
+      </div>
+      <div class="bk-action-bar" style="margin-top:16px;">
+        <button class="bk-btn-outline" onclick="bkConfirmSelected()">确认选中 (<span id="recSelCount">0</span>)</button>
+        <button class="bk-btn-link" onclick="bkExportRecCSV()">导出 CSV</button>
+        <button class="bk-btn-link" style="color:var(--expense-red)" onclick="bkIgnoreDuplicates()">忽略重复项</button>
       </div>
     </div>
-  </div>
 
-  <!-- ========== PAGE: MONTHLY ========== -->
+  </div><!-- /page-bookkeeping --><!-- ========== PAGE: MONTHLY ========== -->
   <div class="page" id="page-monthly">
     <div class="page-header">
       <h2 id="monthlyTitle">本月收支</h2>
@@ -1343,6 +1998,12 @@ input[type="number"] { -moz-appearance: textfield; }
           </div>
           <ul class="top-list" id="topExpensesList"></ul>
           <div class="empty-state hidden" id="topExpensesEmpty">
+            <svg class="brand-illus" width="96" height="96" viewBox="0 0 120 120" fill="none" style="opacity:.92" aria-hidden="true">
+              <rect x="28" y="42" width="64" height="56" rx="14" fill="#FBEAF0" stroke="var(--color-primary)" stroke-width="3"/>
+              <path d="M28 56 q32 -22 64 0" stroke="var(--color-primary)" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <text x="60" y="86" font-size="30" font-weight="700" fill="var(--color-primary)" text-anchor="middle" font-family="sans-serif">¥</text>
+              <path d="M94 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="#EF9F27"/>
+            </svg>
             <p>本月暂无支出记录</p>
           </div>
         </div>
@@ -1357,12 +2018,21 @@ input[type="number"] { -moz-appearance: textfield; }
             </table>
           </div>
           <div class="empty-state hidden" id="monthlyBillsEmpty">
+            <svg class="brand-illus" width="96" height="96" viewBox="0 0 120 120" fill="none" style="opacity:.92" aria-hidden="true">
+              <rect x="28" y="42" width="64" height="56" rx="14" fill="#FBEAF0" stroke="var(--color-primary)" stroke-width="3"/>
+              <path d="M28 56 q32 -22 64 0" stroke="var(--color-primary)" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <text x="60" y="86" font-size="30" font-weight="700" fill="var(--color-primary)" text-anchor="middle" font-family="sans-serif">¥</text>
+              <path d="M94 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="#EF9F27"/>
+            </svg>
             <p>本月暂无账单</p>
           </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Toast（页面级浮层，置于 pages 之外以保证可见） -->
+  <div class="rec-toast" id="recToast"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 7"/></svg><span id="recToastMsg"></span></div>
 
   <!-- ========== PAGE: SETTINGS ========== -->
   <div class="page" id="page-settings">
@@ -1411,7 +2081,7 @@ alter table finance_sync disable row level security;</span><br>
 
     <div class="card">
       <div class="card-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         记账周期
       </div>
       <div class="form-group" style="max-width:260px;">
@@ -1423,7 +2093,7 @@ alter table finance_sync disable row level security;</span><br>
 
     <div class="card">
       <div class="card-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D4A0A5" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         数据备份与恢复
       </div>
       <p class="setting-hint">重要：建议定期把备份文件发到自己邮箱或网盘，防止设备丢失 / 换机导致数据丢失。</p>
@@ -1725,6 +2395,30 @@ function calcYearlySaved() {
 // NAVIGATION
 // ============================================================
 
+/* ===== Theme Toggle (Item 2) ===== */
+function applySavedTheme() {
+  var saved = localStorage.getItem('wb_finance_theme');
+  if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  updateThemeToggle(saved === 'dark' ? 'dark' : 'light');
+}
+function toggleTheme() {
+  var root = document.documentElement;
+  var isDark = root.getAttribute('data-theme') === 'dark';
+  var next = isDark ? 'light' : 'dark';
+  if (next === 'dark') root.setAttribute('data-theme', 'dark');
+  else root.removeAttribute('data-theme');
+  localStorage.setItem('wb_finance_theme', next);
+  updateThemeToggle(next);
+}
+function updateThemeToggle(mode) {
+  var btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  var icon = btn.querySelector('.theme-icon');
+  var label = btn.querySelector('.theme-label');
+  if (mode === 'dark') { icon.textContent = '🌙'; label.textContent = '暗色模式'; }
+  else { icon.textContent = '☀️'; label.textContent = '亮色模式'; }
+}
+
 function switchPage(pageName) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
@@ -1829,7 +2523,7 @@ function renderProgressRing() {
       </div>
       <div class="savings-row">
         <span class="savings-label">当前总额</span>
-        <span class="savings-value primary editable" style="font-size:18px;" ondblclick="editCurrentTotal(this)" title="双击手动修改当前净资产总额">${fmt(netWorth)}</span>
+        <span class="savings-value primary editable" ondblclick="editCurrentTotal(this)" title="双击手动修改当前净资产总额">${fmt(netWorth)}</span>
       </div>
     </div>
   `;
@@ -3076,8 +3770,665 @@ function init() {
   window.addEventListener('offline', function() { setSync('offline'); });
 }
 
+// ============================================================
+// 新记账页交互函数 (Bookkeeping v2)
+// ============================================================
+let _bkState = { images: [], files: [], parsedBills: [], lastResultCount: 0 };
+
+function bkOnTextInput() {
+  const val = document.getElementById('bkTextInput').value.trim();
+  const lines = val ? val.split('\n').filter(l => l.trim()).length : 0;
+  document.getElementById('textBadge').textContent = lines + '条';
+  document.getElementById('statTextCount').textContent = lines;
+}
+
+function bkClearText() {
+  document.getElementById('bkTextInput').value = '';
+  bkOnTextInput();
+}
+
+function bkAddPhotoToText() {
+  document.getElementById('bkImgInput').click();
+}
+
+function bkHandleImages(fileList) {
+  const newFiles = Array.from(fileList);
+  _bkState.images.push(...newFiles);
+  bkRenderImgThumbs();
+  document.getElementById('imgBadge').textContent = _bkState.images.length + '张';
+  document.getElementById('statImgCount').textContent = _bkState.images.length;
+}
+
+function bkClearImages() {
+  _bkState.images = [];
+  bkRenderImgThumbs();
+  document.getElementById('imgBadge').textContent = '0张';
+  document.getElementById('statImgCount').textContent = '0';
+  document.getElementById('bkImgInput').value = '';
+}
+
+function bkRenderImgThumbs() {
+  const container = document.getElementById('bkImgThumbs');
+  if (!_bkState.images.length) { container.innerHTML = ''; return; }
+  container.innerHTML = _bkState.images.map((f, i) => {
+    const url = URL.createObjectURL(f);
+    return `<div class="bk-img-thumb" style="background:url(${url}) center/cover"><button class="rm-btn" onclick="_bkState.images.splice(${i},1);bkRenderImgThumbs();document.getElementById('imgBadge').textContent=_bkState.images.length+'张';document.getElementById('statImgCount').textContent=_bkState.images.length;">×</button></div>`;
+  }).join('');
+}
+
+function bkHandleFiles(fileList) {
+  const newFiles = Array.from(fileList);
+  _bkState.files.push(...newFiles);
+  bkRenderFileList();
+  document.getElementById('fileBadge').textContent = _bkState.files.length + '个';
+  document.getElementById('statFileCount').textContent = _bkState.files.length;
+}
+
+function bkClearFiles() {
+  _bkState.files = [];
+  bkRenderFileList();
+  document.getElementById('fileBadge').textContent = '0个';
+  document.getElementById('statFileCount').textContent = '0';
+  document.getElementById('bkFileInput').value = '';
+}
+
+function bkRenderFileList() {
+  const container = document.getElementById('bkFileList');
+  if (!_bkState.files.length) { container.innerHTML = ''; return; }
+  container.innerHTML = _bkState.files.map((f, i) => {
+    const size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB';
+    return `<div class="bk-file-item"><span class="fname">${escHtml(f.name)}</span><span class="fsize">${size}</span><button class="fremove" onclick="_bkState.files.splice(${i},1);bkRenderFileList();document.getElementById('fileBadge').textContent=_bkState.files.length+'个';document.getElementById('statFileCount').textContent=_bkState.files.length;">✕</button></div>`;
+  }).join('');
+}
+
+// 核心识别解析：文字 + 文件 → 结构化账单
+function bkRecognize() {
+  const textVal = document.getElementById('bkTextInput').value.trim();
+  let bills = [];
+
+  // 1. 解析文字输入
+  if (textVal) {
+    bills = bills.concat(bkParseText(textVal));
+  }
+
+  // 2. 解析文件（CSV）
+  for (const f of _bkState.files) {
+    if (f.name.endsWith('.csv')) {
+      bills = bills.concat(bkParseCSVFile(f));
+    }
+  }
+
+  // 去重
+  if (document.getElementById('recDedupToggle')?.checked) {
+    bills = bkDeduplicate(bills);
+  }
+
+  _bkState.parsedBills = bills;
+  _bkState.lastResultCount = bills.length;
+
+  // 更新统计
+  document.getElementById('statLastResult').innerHTML = bills.length + '<small>条</small>';
+  document.getElementById('statPending').textContent = bills.length;
+
+  // 显示审核面板
+  bkShowRecResults(bills);
+
+  if (bills.length === 0) {
+    alert('未识别到有效账单，请检查输入格式。\n\n支持格式示例：\n2026年8月12日 宝宝奶粉 ¥398\n昨天 工资到账 ¥8000 收入');
+  }
+}
+
+function bkReRecognize() {
+  bkRecognize();
+}
+
+// 文字智能解析
+function bkParseText(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const bills = [];
+  const now = new Date();
+
+  for (const line of lines) {
+    const bill = bkParseOneLine(line.trim(), now);
+    if (bill) bills.push(bill);
+  }
+  return bills;
+}
+
+function bkParseOneLine(line, now) {
+  // 匹配金额 (¥或数字)
+  const amtMatch = line.match(/¥?\s*(\d+(?:\.\d{1,2})?)\s*|(?:收入|支出|进|出)\s*(\d+(?:\.\d{1,2})?)/);
+  if (!amtMatch) return null;
+  const amount = parseFloat(amtMatch[1] || amtMatch[2]);
+  if (!amount || amount <= 0) return null;
+
+  // 判断类型
+  const isIncome = /收入|工资|奖金|红包|退款|到账|转入|理财.*收|分红/i.test(line);
+  const type = isIncome ? 'income' : 'expense';
+
+  // 提取日期
+  let dateStr = '';
+  const dateMatch = line.match(/(\d{4})[年\-\/](\d{1,2})[月\-\/](\d{1,2})[日]?|(\d{1,2})月(\d{1,2})日?|昨天|今天|前天/i);
+  if (dateMatch) {
+    if (dateMatch[0] === '昨天') { const d=new Date(now); d.setDate(d.getDate()-1); dateStr=d.toISOString().slice(0,10); }
+    else if (dateMatch[0] === '今天') { dateStr=now.toISOString().slice(0,10); }
+    else if (dateMatch[0] === '前天') { const d=new Date(now); d.setDate(d.getDate()-2); dateStr=d.toISOString().slice(0,10); }
+    else if (dateMatch[1]) { dateStr = `${dateMatch[1]}-${String(dateMatch[2]).padStart(2,'0')}-${String(dateMatch[3]).padStart(2,'0')}`; }
+    else if (dateMatch[4]) { dateStr = `${now.getFullYear()}-${String(dateMatch[4]).padStart(2,'0')}-${String(dateMatch[5]).padStart(2,'0')}`; }
+  } else {
+    dateStr = now.toISOString().slice(0, 10);
+  }
+
+  // 提取摘要（去掉日期和金额后的剩余文字）
+  let summary = line
+    .replace(/¥?\s*\d+(?:\.\d{1,2})?\s*/g, '')
+    .replace(/\d{4}[年\-\/]\d{1,2}[月\-\/]\d{1,2}[日]?/g, '')
+    .replace(/\d{1,2}月\d{1,2}日?/g, '')
+    .replace(/昨天|今天|前天/g, '')
+    .replace(/收入|支出|进|出/g, '')
+    .replace(/[¥,\s]+/g, ' ')
+    .trim();
+  if (!summary) summary = type === 'income' ? '收入' : '支出';
+
+  // 自动分类
+  const category = bkAutoClassify(summary, type);
+
+  return { id: genId(), date: dateStr, summary, type, category, amount, note: '', source: 'text', checked: true, status: 'new' };
+}
+
+// CSV 文件解析（微信/支付宝/通用格式）
+async function bkParseCSVFile(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) { resolve([]); return; }
+
+      // 检测格式
+      const header = lines[0].toLowerCase();
+      const isWechat = header.includes('交易时间') || header.includes('支付方');
+      const isAlipay = header.includes('交易时间') || header.includes('交易分类');
+      
+      const bills = [];
+      const startIndex = isWechat || isAlipay ? 1 : 0; // 有表头则跳过
+
+      for (let i = startIndex; i < Math.min(lines.length, startIndex + 500); i++) {
+        const cells = bkSplitCSVLine(lines[i]);
+        if (cells.length < 3) continue;
+
+        let date='', summary='', amount=0, type='expense';
+
+        if (isWechat) {
+          // 微信: 交易时间,交易类型,交易对方,商品,金额,...
+          date = (cells[0]||'').replace(/\//g, '-').slice(0,10);
+          summary = cells[3] || cells[2] || '未知';
+          const amtStr = (cells[5]||cells[4]||'').replace(/[^0-9.\-]/g,'');
+          amount = parseFloat(amtStr)||0;
+          type = (cells[1]||'').includes('收入') ? 'income' : 'expense';
+        } else if (isAlipay) {
+          // 支付宝: 交易时间,交易分类,交易对方,商品说明,金额,...
+          date = (cells[0]||'').replace(/\//g, '-').slice(0,10);
+          summary = cells[3] || cells[2] || '未知';
+          const amtStr = (cells[4]||'').replace(/[^0-9.\-]/g,'');
+          amount = parseFloat(amtStr)||0;
+          type = amount < 0 ? 'income' : 'expense';
+          amount = Math.abs(amount);
+        } else {
+          // 通用 CSV: 尝试自动检测
+          date = (cells[0]||'').replace(/\//g, '-').slice(0,10);
+          summary = cells[1] || '未知';
+          for (let c of cells) {
+            const m = c.match(/-?(\d+(?:\.\d{1,2})?)/);
+            if (m && parseFloat(m[1]) !== 0) { amount = Math.abs(parseFloat(m[1])); break; }
+          }
+        }
+
+        if (!date || !amount || amount <= 0) continue;
+        // 验证日期格式
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+        const category = bkAutoClassify(summary, type);
+        bills.push({ id: genId(), date, summary, type, category, amount, note: '', source: file.name, checked: true, status: 'imported' });
+      }
+      resolve(bills);
+    };
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function bkSplitCSVLine(line) {
+  const result = [];
+  let current = '', inQuotes = false;
+  for (let ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+
+// 智能去重（同日期+同金额+同类别 = 重复）
+function bkDeduplicate(bills) {
+  const seen = {};
+  const result = [];
+  for (const b of bills) {
+    const key = `${b.date}|${b.amount}|${b.category}`;
+    if (seen[key]) {
+      seen[key].push(b);
+    } else {
+      seen[key] = [b];
+      result.push({ ...b, dupGroup: seen[key].length ? seen[key][0].id : null });
+    }
+  }
+  return result;
+}
+
+function bkSmartDedup() {
+  if (!_bkState.parsedBills.length) { alert('暂无数据可去重，请先点击「识别解析」'); return; }
+  _bkState.parsedBills = bkDeduplicate(_bkState.parsedBills);
+  bkShowRecResults(_bkState.parsedBills);
+  alert(`去重完成！${_bkState.parsedBills.length} 条记录`);
+}
+
+// 显示识别结果审核面板
+function bkShowRecResults(bills) {
+  const panel = document.getElementById('recResults');
+  panel.classList.remove('hidden');
+
+  // Banner
+  const bannerTxt = document.getElementById('recBannerTxt');
+  const dupCount = bills.filter(b => b.dupGroup).length;
+  bannerTxt.innerHTML = `共识别 <b>${bills.length}</b> 条账单${dupCount > 0 ? `，发现 <b style="color:var(--expense-red)">${dupCount}</b> 条可能重复` : ''}`;
+
+  // 表格
+  const tbody = document.getElementById('recTblBody');
+  tbody.innerHTML = bills.map((b, i) => `
+    <tr data-id="${b.id}" class="${b.dupGroup ? 'rec-st-dup' : ''}">
+      <td><input type="checkbox" ${b.checked?'checked':''} onchange="_bkState.parsedBills[${i}].checked=this.checked;bkUpdateSelCount()"></td>
+      <td>${b.date}</td>
+      <td>${escHtml(b.summary)}</td>
+      <td><span style="color:${b.type==='income'?'var(--income-green)':'var(--expense-red)'};font-weight:500;font-size:12px">${b.type==='income'?'收入':'支出'}</span></td>
+      <td>${b.category ? (b.type==='income'?INCOME_CATEGORIES.find(c=>c.key===b.category)?.name:EXPENSE_CATEGORIES.find(c=>c.key===b.category)?.name)||b.category : '<span style="color:var(--text-muted)">待分类</span>'}</td>
+      <td style="font-weight:600;color:${b.type==='income'?'var(--income-green)':'var(--expense-red)'}">${b.type==='income'?'+':'-'}¥${fmt(b.amount)}</td>
+      <td>${escHtml(b.note||'—')}</td>
+      <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${b.status==='new'?'#E8F5E9':b.status==='dup'?'#FFF3E0':'#F5F5F5'};color:${b.status==='new'?'#2E7D32':b.status==='dup'?'#EF6C00':'#666'}">${b.status==='new'?'新识别':b.status==='imported'?'已导入':'重复'}</span></td>
+      <td><button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="bkDeleteRecItem(${i})">删除</button></td>
+    </tr>`).join('');
+
+  // 去重分组
+  bkRenderDupGroups(bills);
+  bkUpdateSelCount();
+  
+  // 滚动到结果区
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function bkRenderDupGroups(bills) {
+  const dupBills = bills.filter(b => b.dupGroup);
+  const container = document.getElementById('recGroupList');
+  if (!dupBills.length) { container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;text-align:center;padding:12px 0">✅ 未发现重复记录</p>'; return; }
+
+  // Group by original
+  const groups = {};
+  for (const b of dupBills) {
+    if (!groups[b.dupGroup]) groups[b.dupGroup] = [];
+    groups[b.dupGroup].push(b);
+  }
+
+  container.innerHTML = Object.values(groups).map(g => `
+    <div style="padding:10px 12px;background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;margin-bottom:8px">
+      <div style="font-size:12px;color:#E65100;margin-bottom:6px">⚠️ 可能重复 (${g.length}条相同)</div>
+      ${g.map(b => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>${b.date} · ${escHtml(b.summary)}</span><span style="font-weight:600;color:var(--expense-red)">¥${fmt(b.amount)}</span></div>`).join('')}
+    </div>`).join('');
+}
+
+function bkUpdateSelCount() {
+  const sel = _bkState.parsedBills.filter(b => b.checked);
+  document.getElementById('recSelCount').textContent = sel.length;
+}
+
+function toggleRecSelectAll() {
+  const checked = document.getElementById('recSelAll').checked;
+  _bkState.parsedBills.forEach(b => b.checked = checked);
+  document.querySelectorAll('#recTblBody input[type="checkbox"]').forEach(cb => cb.checked = checked);
+  bkUpdateSelCount();
+}
+
+function bkDeleteRecItem(idx) {
+  if (!confirm('确定删除这条记录？')) return;
+  _bkState.parsedBills.splice(idx, 1);
+  bkShowRecResults(_bkState.parsedBills);
+}
+
+// 确认选中项入账
+function bkConfirmSelected() {
+  const toConfirm = _bkState.parsedBills.filter(b => b.checked);
+  if (!toConfirm.length) { alert('请先勾选要入账的记录'); return; }
+  if (!confirm(`确认将 ${toConfirm.length} 条记录入账？`)) return;
+
+  const bills = getBills();
+  bills.push(...toConfirm.map(b => ({
+    id: b.id, date: b.date, summary: b.summary,
+    type: b.type, category: b.category,
+    amount: b.amount, note: b.note || ''
+  })));
+  saveBills(bills);
+
+  // 从待审列表移除
+  _bkState.parsedBills = _bkState.parsedBills.filter(b => !b.checked);
+  bkShowRecResults(_bkState.parsedBills);
+  document.getElementById('statPending').textContent = _bkState.parsedBills.length;
+
+  renderBills();
+  alert(`✅ 已成功入账 ${toConfirm.length} 条记录！`);
+}
+
+// 确认全部入账
+function bkConfirmAll() {
+  _bkState.parsedBills.forEach(b => b.checked = true);
+  bkConfirmSelected();
+}
+
+// 导出识别结果为 CSV
+function bkExportRecCSV() {
+  if (!_bkState.parsedBills.length) { alert('无数据可导出'); return; }
+  const headers = ['日期','摘要','类型','类别','金额','备注','来源'];
+  const rows = _bkState.parsedBills.map(b => [b.date,b.summary,b.type,b.category,b.amount,b.note||'',b.source||'']);
+  const csv = [headers.join(','), ...rows.map(r => r.map(c=>`"${c}"`).join(','))].join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`账单识别结果_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+// 忽略重复项
+function bkIgnoreDuplicates() {
+  const before = _bkState.parsedBills.length;
+  _bkState.parsedBills = _bkState.parsedBills.filter(b => !b.dupGroup);
+  const removed = before - _bkState.parsedBills.length;
+  bkShowRecResults(_bkState.parsedBills);
+  document.getElementById('statPending').textContent = _bkState.parsedBills.length;
+  if (removed > 0) alert(`已忽略 ${removed} 条重复记录`);
+}
+
+// 自动分类关键词匹配
+function bkAutoClassify(summary, type) {
+  const s = summary.toLowerCase();
+  const cats = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  for (const cat of cats) {
+    if (cat.keywords) {
+      for (const kw of cat.keywords) {
+        if (s.includes(kw.toLowerCase())) return cat.key;
+      }
+    }
+  }
+  // 默认分类
+  return type === 'income' ? 'other_income' : 'other_expense';
+}
+
+// Drag & drop support for dropzones
+document.addEventListener('DOMContentLoaded', function() {
+  const imgDropzone = document.getElementById('bkImgDropzone');
+  const fileDropzone = document.getElementById('bkFileDropzone');
+
+  if (imgDropzone) {
+    imgDropzone.addEventListener('dragover', e => { e.preventDefault(); imgDropzone.style.borderColor='var(--color-primary)'; imgDropzone.style.background='var(--color-primary-bg)'; });
+    imgDropzone.addEventListener('dragleave', () => { imgDropzone.style.borderColor=''; imgDropzone.style.background=''; });
+    imgDropzone.addEventListener('drop', e => { e.preventDefault(); imgDropzone.style.borderColor=''; imgDropzone.style.background=''; bkHandleImages(e.dataTransfer.files); });
+  }
+  if (fileDropzone) {
+    fileDropzone.addEventListener('dragover', e => { e.preventDefault(); fileDropzone.style.borderColor='var(--color-primary)'; fileDropzone.style.background='var(--color-primary-bg)'; });
+    fileDropzone.addEventListener('dragleave', () => { fileDropzone.style.borderColor=''; fileDropzone.style.background=''; });
+    fileDropzone.addEventListener('drop', e => { e.preventDefault(); fileDropzone.style.borderColor=''; fileDropzone.style.background=''; bkHandleFiles(e.dataTransfer.files); });
+  }
+});
+
 // Run on load
 init();
+applySavedTheme();
+</script>
+<script>
+// ============================================================
+// 智能识别页 (RECOGNIZE) — 多源导入 → 自动识别去重 → 分类确认入账
+// ============================================================
+(function(){
+  const REC_PLAT = {
+    wx:{name:'微信', color:'var(--rec-wx)', short:'微信支付'},
+    ali:{name:'支付宝', color:'var(--rec-ali)', short:'支付宝'},
+    tb:{name:'淘宝', color:'var(--rec-tb)', short:'淘宝订单'},
+    pdd:{name:'拼多多', color:'var(--rec-pdd)', short:'拼多多'},
+    img:{name:'图片', color:'var(--color-primary)', short:'图片识别'}
+  };
+  const REC_IMPORT_TX = [
+    {date:'2026-08-03', time:'14:22', mer:'厨房收纳盒', src:'pdd', catKey:'daily', type:'expense', amt:39.90, group:'A', dup:true},
+    {date:'2026-08-03', time:'14:21', mer:'厨房收纳盒', src:'wx', catKey:'daily', type:'expense', amt:39.90, group:'A', dup:false},
+    {date:'2026-08-02', time:'20:10', mer:'纯棉T恤', src:'tb', catKey:'clothing', type:'expense', amt:89.00, group:'B', dup:true},
+    {date:'2026-08-02', time:'20:09', mer:'纯棉T恤', src:'ali', catKey:'clothing', type:'expense', amt:89.00, group:'B', dup:false},
+    {date:'2026-08-01', time:'09:30', mer:'小区早餐店', src:'wx', catKey:'food', type:'expense', amt:18.50, group:null, dup:false},
+    {date:'2026-07-31', time:'19:45', mer:'滴滴出行', src:'ali', catKey:'transport', type:'expense', amt:32.00, group:null, dup:false},
+    {date:'2026-07-30', time:'12:10', mer:'新疆阿克苏苹果', src:'pdd', catKey:'food', type:'expense', amt:25.80, group:null, dup:false},
+    {date:'2026-07-29', time:'21:00', mer:'话费充值', src:'ali', catKey:'virtual', type:'expense', amt:50.00, group:null, dup:false}
+  ];
+  const REC_IMPORT_GROUPS = [
+    {id:'A', name:'厨房收纳盒', amt:39.90, catKey:'daily', master:'wx', sources:['wx','pdd'], saved:39.90},
+    {id:'B', name:'纯棉T恤', amt:89.00, catKey:'clothing', master:'ali', sources:['ali','tb'], saved:89.00}
+  ];
+  const REC_IMAGE_TX = [
+    {date:'2026-08-04', time:'10:15', mer:'星巴克咖啡', src:'img', catKey:'food', type:'expense', amt:39.00, group:null, dup:false},
+    {date:'2026-08-04', time:'12:40', mer:'优衣库T恤', src:'img', catKey:'clothing', type:'expense', amt:99.00, group:null, dup:false},
+    {date:'2026-08-04', time:'18:30', mer:'超市日用品', src:'img', catKey:'daily', type:'expense', amt:56.40, group:'IA', dup:false},
+    {date:'2026-08-04', time:'18:31', mer:'超市小票(重复拍摄)', src:'img', catKey:'daily', type:'expense', amt:56.40, group:'IA', dup:true}
+  ];
+  const REC_IMAGE_GROUPS = [
+    {id:'IA', name:'超市日用品', amt:56.40, catKey:'daily', master:'img', sources:['img','img'], saved:56.40}
+  ];
+  const REC_SETS = {
+    import:{tx:REC_IMPORT_TX, groups:REC_IMPORT_GROUPS},
+    image:{tx:REC_IMAGE_TX, groups:REC_IMAGE_GROUPS}
+  };
+
+  let recDedupOn = true;
+  let recRecognized = false;
+  let recSetKey = 'import';
+  let recTx = [], recGroups = [];
+
+  function recCatName(key){
+    const all = (typeof EXPENSE_CATEGORIES!=='undefined'?EXPENSE_CATEGORIES:[]).concat(typeof INCOME_CATEGORIES!=='undefined'?INCOME_CATEGORIES:[]);
+    const f = all.find(c=>c.key===key);
+    return f ? f.name : key;
+  }
+  function recStatus(t){
+    if(t.dup) return ['dup','重复'];
+    if(t.group) return ['merged','已合并'];
+    return ['new','新增'];
+  }
+  function recToast(msg){
+    const t=document.getElementById('recToast');
+    if(!t) return;
+    document.getElementById('recToastMsg').textContent=msg;
+    t.classList.add('show');
+    clearTimeout(t._t);
+    t._t=setTimeout(()=>t.classList.remove('show'),2400);
+  }
+  function recLoadSet(key){
+    recSetKey=key;
+    const s=REC_SETS[key];
+    recTx=s.tx; recGroups=s.groups;
+  }
+  function recRenderGroups(){
+    const list=document.getElementById('recGroupList'); if(!list) return;
+    list.innerHTML='';
+    recGroups.forEach(g=>{
+      const div=document.createElement('div'); div.className='rec-group open';
+      const srcRows=g.sources.map(s=>{
+        const isMaster=s===g.master;
+        return '<div class="rec-src-row '+(isMaster?'master':'')+'">'+
+          '<span class="sr-dot" style="background:'+REC_PLAT[s].color+'"></span>'+
+          '<span class="sr-name">'+REC_PLAT[s].short+(isMaster?'<span class="role">主记录</span>':'')+'</span>'+
+          '<span class="sr-amt">'+fmt(g.amt)+'</span>'+
+        '</div>';
+      }).join('');
+      div.innerHTML=
+        '<div class="rec-group-head">'+
+          '<div class="gh-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M7 8l-3 4 3 4m10-8l3 4-3 4M14 4l-4 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'+
+          '<div class="gh-main"><div class="gh-name">'+g.name+'</div><div class="gh-meta">'+REC_PLAT[g.master].short+' 支付 · 自动归类「'+recCatName(g.catKey)+'」</div></div>'+
+          '<span class="rec-gh-save">省 '+fmt(g.saved)+'</span>'+
+          '<span class="gh-amt">'+fmt(g.amt)+'</span>'+
+          '<svg class="chev" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'+
+        '</div>'+
+        '<div class="rec-group-body">'+srcRows+'</div>';
+      div.querySelector('.rec-group-head').addEventListener('click',()=>div.classList.toggle('open'));
+      list.appendChild(div);
+    });
+  }
+  function recRenderResults(){
+    const body=document.getElementById('recTblBody'); if(!body) return;
+    body.innerHTML='';
+    recTx.forEach(t=>{
+      const dim = recDedupOn && t.dup;
+      const tr=document.createElement('tr');
+      if(dim) tr.style.opacity='.5';
+      const st=recStatus(t);
+      tr.innerHTML=
+        '<td>'+t.date.slice(5)+' '+t.time+'</td>'+
+        '<td style="font-weight:500;'+(dim?'text-decoration:line-through;color:var(--text-muted);':'')+'">'+t.mer+'</td>'+
+        '<td><span class="rec-src-tag"><span class="pdot" style="background:'+REC_PLAT[t.src].color+'"></span>'+REC_PLAT[t.src].name+'</span></td>'+
+        '<td style="color:var(--text-secondary)">'+recCatName(t.catKey)+'</td>'+
+        '<td><span class="rec-st '+st[0]+'">'+st[1]+'</span></td>'+
+        '<td style="text-align:right;font-weight:500;'+(dim?'color:var(--text-muted);':'')+'">'+fmt(t.amt)+'</td>';
+      body.appendChild(tr);
+    });
+    const txt=document.getElementById('recBannerTxt');
+    const mergeCard=document.getElementById('recMergeCard');
+    if(recDedupOn){
+      const saved=recGroups.reduce((s,g)=>s+g.saved,0);
+      const unique=recTx.filter(t=>!t.dup).length;
+      const uniqueSum=recTx.filter(t=>!t.dup).reduce((s,t)=>s+t.amt,0);
+      txt.innerHTML='智能去重已开启 · 识别 <b>'+recTx.length+'</b> 笔，自动合并 <b>'+recGroups.length+'</b> 组重复，为你节省 <b>'+fmt(saved)+'</b>';
+      document.getElementById('recSelCount').textContent=unique;
+      document.getElementById('recSelSum').textContent=fmt(uniqueSum);
+      mergeCard.classList.remove('hidden');
+      recRenderGroups();
+    } else {
+      const total=recTx.reduce((s,t)=>s+t.amt,0);
+      txt.innerHTML='智能去重已关闭 · 当前按原始 <b>'+recTx.length+'</b> 笔逐条展示，含重复来源';
+      document.getElementById('recSelCount').textContent=recTx.length;
+      document.getElementById('recSelSum').textContent=fmt(total);
+      mergeCard.classList.add('hidden');
+    }
+  }
+  function recShowResults(){
+    const r=document.getElementById('recResults');
+    r.classList.remove('hidden'); r.classList.add('rec-fade');
+    document.getElementById('bkActionBar').style.display='flex';
+    recRenderResults();
+    r.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  // 三段切换
+  window.bkSwitchTab=function(mode){
+    document.querySelectorAll('#bkTabs .bk-tab').forEach(t=>t.classList.toggle('on', t.dataset.mode===mode));
+    document.getElementById('bkPanelManual').classList.toggle('hidden', mode!=='manual');
+    document.getElementById('bkPanelImage').classList.toggle('hidden', mode!=='image');
+    document.getElementById('bkPanelImport').classList.toggle('hidden', mode!=='import');
+    recRecognized=false;
+    document.getElementById('recResults').classList.add('hidden');
+    document.getElementById('bkActionBar').style.display='none';
+  };
+
+  // 导入：文字 / Excel 切换
+  const impTabs=document.querySelectorAll('#bkImportTabs .rec-tab');
+  impTabs.forEach(t=>{
+    t.addEventListener('click',()=>{
+      impTabs.forEach(x=>x.classList.remove('on'));
+      t.classList.add('on');
+      const m=t.dataset.mode;
+      document.getElementById('bkImportPanelText').classList.toggle('hidden', m!=='text');
+      document.getElementById('bkImportPanelExcel').classList.toggle('hidden', m!=='excel');
+    });
+  });
+  document.querySelectorAll('#recChips .rec-chip').forEach(c=>c.addEventListener('click',()=>c.classList.toggle('on')));
+
+  // 图片上传 + 缩略图
+  const bkDz=document.getElementById('bkDzImage');
+  const bkThumbs=document.getElementById('bkThumbs');
+  if(bkDz){
+    const inp=bkDz.querySelector('input');
+    bkDz.addEventListener('click',()=>inp.click());
+    bkDz.addEventListener('dragover',e=>{e.preventDefault(); bkDz.style.borderColor='var(--color-primary)';});
+    bkDz.addEventListener('dragleave',()=>bkDz.style.borderColor='');
+    bkDz.addEventListener('drop',e=>{e.preventDefault(); bkDz.style.borderColor='';});
+    inp.addEventListener('change',()=>{
+      bkThumbs.innerHTML='';
+      Array.from(inp.files).slice(0,9).forEach(f=>{
+        const d=document.createElement('div'); d.className='bk-thumb';
+        if(f.type && f.type.indexOf('image/')===0){
+          const im=document.createElement('img'); im.src=URL.createObjectURL(f); d.appendChild(im);
+        } else { d.textContent=f.name; }
+        bkThumbs.appendChild(d);
+      });
+    });
+  }
+  // Excel 拖拽
+  const dzExcel=document.getElementById('recDzExcel');
+  if(dzExcel){
+    const inp=dzExcel.querySelector('input');
+    dzExcel.addEventListener('click',()=>inp.click());
+    dzExcel.addEventListener('dragover',e=>{e.preventDefault(); dzExcel.style.borderColor='var(--color-primary)';});
+    dzExcel.addEventListener('dragleave',()=>dzExcel.style.borderColor='');
+    dzExcel.addEventListener('drop',e=>{e.preventDefault(); dzExcel.style.borderColor='';});
+  }
+
+  // 识别按钮
+  const rBtn=document.getElementById('recRecognizeBtn');
+  if(rBtn) rBtn.addEventListener('click',()=>{
+    rBtn.disabled=true; rBtn.textContent='识别中…';
+    setTimeout(()=>{
+      recRecognized=true; rBtn.disabled=false; rBtn.textContent='重新识别';
+      recLoadSet('import'); recShowResults();
+    },950);
+  });
+  const iBtn2=document.getElementById('bkImageRecognizeBtn');
+  if(iBtn2) iBtn2.addEventListener('click',()=>{
+    iBtn2.disabled=true; iBtn2.textContent='识别中…';
+    setTimeout(()=>{
+      recRecognized=true; iBtn2.disabled=false; iBtn2.textContent='重新识别';
+      recLoadSet('image'); recShowResults();
+    },950);
+  });
+
+  // 去重开关
+  const dt=document.getElementById('recDedupToggle');
+  if(dt) dt.addEventListener('change',e=>{recDedupOn=e.target.checked; if(recRecognized) recRenderResults();});
+
+  // 批量确认入账
+  const cBtn=document.getElementById('recConfirmBtn');
+  if(cBtn) cBtn.addEventListener('click',()=>{
+    if(!recRecognized){recToast('请先识别账单再入账');return;}
+    const uniq=recTx.filter(t=>!t.dup);
+    if(typeof state!=='undefined'){
+      uniq.forEach(t=>{
+        state.bills.push({id:genId(), date:t.date, summary:t.mer, type:t.type, category:t.catKey, amount:t.amt, note:'智能识别·'+REC_PLAT[t.src].name});
+      });
+      saveState();
+    }
+    recToast('已入账 '+uniq.length+' 笔，合计 '+fmt(uniq.reduce((s,t)=>s+t.amt,0)));
+  });
+  const igBtn=document.getElementById('recIgnoreBtn');
+  if(igBtn) igBtn.addEventListener('click',()=>recToast('已忽略全部重复来源'));
+  const eBtn=document.getElementById('recExportBtn');
+  if(eBtn) eBtn.addEventListener('click',()=>{
+    if(!recRecognized){recToast('请先识别账单再导出');return;}
+    const rows=[['日期','商户','来源','分类','金额']];
+    recTx.filter(t=>!t.dup).forEach(t=>rows.push([t.date,t.mer,REC_PLAT[t.src].name,recCatName(t.catKey),t.amt]));
+    const csv=rows.map(r=>r.join(',')).join('\n');
+    const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='账单识别结果.csv'; a.click();
+    recToast('已导出 CSV');
+  });
+})();
+
 </script>
 </body>
 </html>
