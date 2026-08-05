@@ -108,6 +108,8 @@ body {
   padding: 24px 32px;
   max-width: 1200px;
 }
+/* 月度收支页：铺满整页，不受 1200px 限制 */
+.main-content:has(#page-monthly.active) { max-width: none; }
 .page { display: none; }
 .page.active { display: block; animation: fadeIn 0.25s ease; }
 
@@ -558,7 +560,7 @@ body {
 /* ===== Monthly Main Layout: Left(3 panels) | Right(TOP10+Bills) ===== */
 .monthly-main-layout {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 420px;
   gap: 16px;
   align-items: start;
 }
