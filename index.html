@@ -3445,7 +3445,6 @@ function renderTopExpenses(range) {
   const bills = getBillsInRange(range.start, range.end)
     .filter(b => b.type === 'expense')
     .sort((a, b) => (parseFloat(b.amount)||0) - (parseFloat(a.amount)||0))
-    .reverse()
     .slice(0, 20);
 
   const list = document.getElementById('topExpensesList');
