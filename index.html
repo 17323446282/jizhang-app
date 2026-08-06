@@ -1195,6 +1195,60 @@ body {
   min-width: 150px; text-align: center;
 }
 
+/* 月度页标题行：标题 + 导航紧挨 */
+.monthly-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.monthly-title-row h2 {
+  margin: 0;
+  flex-shrink: 0;
+}
+.monthly-title-row .month-nav {
+  margin-top: 0;
+}
+/* 日历图标按钮（自选范围切换） */
+.month-nav-mode-btn {
+  width: 36px !important; height: 36px !important;
+  border-radius: 8px !important;
+}
+.month-nav-mode-btn.active-mode {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: #fff !important;
+}
+
+/* 自选时间范围面板 */
+.custom-range-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #FBF7F4;
+  border-radius: var(--radius-md);
+  border: 1px solid #E8DED6;
+  margin-top: 8px;
+}
+.custom-range-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.custom-range-input {
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: #fff;
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+.custom-range-input:focus { border-color: var(--color-primary); }
+
 /* ===== Modal / Dialog ===== */
 .modal-overlay {
   display: none;
@@ -1988,15 +2042,29 @@ input[type="number"] { -moz-appearance: textfield; }
   </div><!-- /page-bookkeeping --><!-- ========== PAGE: MONTHLY ========== -->
   <div class="page" id="page-monthly">
     <div class="page-header">
-      <h2 id="monthlyTitle">本月收支</h2>
-      <div class="month-nav">
-        <button class="month-nav-btn" onclick="navMonth(-1)" aria-label="上个月">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <span class="month-nav-text" id="monthNavText"></span>
-        <button class="month-nav-btn" onclick="navMonth(1)" aria-label="下个月">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 6 15 12 9 18"/></svg>
-        </button>
+      <div class="monthly-title-row">
+        <h2 id="monthlyTitle">本月收支</h2>
+        <div class="month-nav">
+          <button class="month-nav-btn" onclick="navMonth(-1)" aria-label="上个月">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span class="month-nav-text" id="monthNavText"></span>
+          <button class="month-nav-btn" onclick="navMonth(1)" aria-label="下个月">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 6 15 12 9 18"/></svg>
+          </button>
+          <button class="month-nav-btn month-nav-mode-btn" id="customRangeBtn" onclick="toggleCustomRange()" title="切换到自选时间范围" aria-label="自选时间范围">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </button>
+        </div>
+      </div>
+      <!-- 自选时间范围面板（默认隐藏） -->
+      <div class="custom-range-panel hidden" id="customRangePanel">
+        <label class="custom-range-label">从</label>
+        <input type="date" class="custom-range-input" id="customRangeStart" onchange="applyCustomRange()">
+        <label class="custom-range-label">至</label>
+        <input type="date" class="custom-range-input" id="customRangeEnd" onchange="applyCustomRange()">
+        <button class="btn btn-primary btn-sm" type="button" onclick="applyCustomRange()">确定</button>
+        <button class="btn btn-sm" type="button" onclick="toggleCustomRange(false)" style="color:var(--text-muted);">取消</button>
       </div>
     </div>
 
@@ -3076,6 +3144,64 @@ function parseText(text) {
   result.category = guessCategory(text, result.type);
 
   return result;
+}
+
+/* ===== 自选时间范围模式 ===== */
+var customRangeMode = false;
+var customStart = null;
+var customEnd = null;
+
+function toggleCustomRange(forceState) {
+  var panel = document.getElementById('customRangePanel');
+  var btn = document.getElementById('customRangeBtn');
+  if (typeof forceState === 'boolean') {
+    customRangeMode = forceState;
+  } else {
+    customRangeMode = !customRangeMode;
+  }
+  if (customRangeMode) {
+    panel.classList.remove('hidden');
+    btn.classList.add('active-mode');
+    // 默认填充当前月份的起止日期
+    if (!customStart) {
+      var now = new Date(navYear, navMonthVal - 1, 1);
+      var nextM = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      document.getElementById('customRangeStart').value = formatDateISO(now);
+      document.getElementById('customRangeEnd').value = formatDateISO(nextM);
+    } else {
+      document.getElementById('customRangeStart').value = formatDateISO(customStart);
+      document.getElementById('customRangeEnd').value = formatDateISO(customEnd);
+    }
+  } else {
+    panel.classList.add('hidden');
+    btn.classList.remove('active-mode');
+  }
+}
+
+function applyCustomRange() {
+  var sVal = document.getElementById('customRangeStart').value;
+  var eVal = document.getElementById('customRangeEnd').value;
+  if (!sVal || !eVal) { alert('请选择起止日期'); return; }
+  customStart = new Date(sVal + 'T00:00:00');
+  customEnd = new Date(eVal + 'T23:59:59');
+  if (customEnd < customStart) { alert('结束日期不能早于开始日期'); return; }
+  customRangeMode = true;
+  refreshCustomRangeView();
+}
+
+function refreshCustomRangeView() {
+  var txt = document.getElementById('monthNavText');
+  if (txt) {
+    var fmt = function(d) { return d.getFullYear() + '/' + (d.getMonth()+1) + '/' + d.getDate(); };
+    txt.textContent = fmt(customStart) + '-' + fmt(customEnd);
+  }
+  var range = { start: customStart, end: customEnd, labelYear: customStart.getFullYear(), labelMonth: customStart.getMonth()+1,
+                startDate: customStart, endDate: customEnd };
+  updateMonthlyMetrics(range);
+  renderMonthlyCharts(range);
+  renderTopExpenses(range);
+  renderLiquidFunds(range);
+  renderMonthlyBills(range);
 }
 
 function guessCategory(text, type) {
