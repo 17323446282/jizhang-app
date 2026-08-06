@@ -1797,8 +1797,8 @@ input[type="number"] { -moz-appearance: textfield; }
               <div class="bk-dropzone-icon">
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M5 17l4.5-4.5L13 16l3-3 3 3"/></svg>
               </div>
-              <p class="bk-dropzone-text">请添加图片或<br>拖拽图片至此处</p>
-              <p class="bk-dropzone-hint">支持 JPG / PNG / HEIC 拖拽输入</p>
+              <p class="bk-dropzone-text">添加订单截图 / 发票 / 支付凭证<br>自动识别为账单</p>
+              <p class="bk-dropzone-hint">支持 拼多多/淘宝/小红书/电子发票/支付截图（需在设置页配置OCR密钥）</p>
               <input type="file" id="bkImgInput" accept="image/*" multiple hidden onchange="bkHandleImages(this.files)">
             </div>
             <div class="bk-img-thumbs" id="bkImgThumbs"></div>
@@ -2121,6 +2121,27 @@ alter table finance_sync disable row level security;</span><br>
         <input type="number" class="form-input" id="cycleDay" min="1" max="28" onchange="updateCycleDay(this.value)">
         <p class="setting-hint" style="margin-top:6px;">例：设为 11，则每月 11 日 ~ 次月 10 日为一个记账月。</p>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E67E22" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><path d="M3 10h18"/><circle cx="9" cy="14" r="1"/><path d="M15 14h-2m0 0H11m2 0v2m0-2v-2"/></svg>
+        图片识别（腾讯云OCR）
+      </div>
+      <p class="setting-hint">配置后，记账页可上传截图自动识别为账单。支持：拼多多/淘宝订单、电子发票、小红书/抖音等电商截图、微信/支付宝支付截图。<a href="https://console.cloud.tencent.com/cam/capi" target="_blank" style="color:var(--color-primary);">去腾讯云获取密钥 →</a></p>
+      <div class="form-group">
+        <label class="form-label">SecretId</label>
+        <input type="text" class="form-input" id="ocrSecretId" placeholder="AKIDxxxxxxxxxxxxxxx">
+      </div>
+      <div class="form-group">
+        <label class="form-label">SecretKey</label>
+        <input type="password" class="form-input" id="ocrSecretKey" placeholder="输入你的 SecretKey">
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn btn-primary btn-sm" type="button" onclick="saveOcrConfig()">保存 OCR 配置</button>
+        <span id="ocrConfigStatus" style="margin-left:8px;font-size:13px;color:#888;"></span>
+      </div>
+      <p class="setting-hint" style="margin-top:10px;">⚠️ 密钥仅存于本机浏览器，不会上传到任何服务器。每月有免费额度（通用OCR 1000次/月，发票OCR 1000次/月）。</p>
     </div>
 
     <div class="card">
@@ -3514,6 +3535,50 @@ function closeModal() {
 }
 
 // ============================================================
+// 腾讯云 OCR 图片识别配置
+// ============================================================
+var OCR_CONFIG_KEY = 'wb_finance_ocr_config';
+var ocrConfig = { secretId: '', secretKey: '' };
+
+function loadOcrConfig() {
+  try { var r = localStorage.getItem(OCR_CONFIG_KEY); ocrConfig = r ? JSON.parse(r) : { secretId: '', secretKey: '' }; }
+  catch(e) { ocrConfig = { secretId: '', secretKey: '' }; }
+  // 预填用户已申请的密钥（SecretId 可预填，SecretKey 需用户自行输入）
+  if (!ocrConfig.secretId) {
+    ocrConfig.secretId = 'AKIDF9zmQLUQxR0onV26eYXHoH6ea3J';
+    saveOcrConfigSilent();
+  }
+}
+
+function saveOcrConfig() {
+  var sid = document.getElementById('ocrSecretId').value.trim();
+  var skey = document.getElementById('ocrSecretKey').value.trim();
+  if (!sid || !skey) {
+    showOcrConfigStatus('⚠️ 请填写完整的 SecretId 和 SecretKey', 'error');
+    return;
+  }
+  ocrConfig = { secretId: sid, secretKey: skey };
+  localStorage.setItem(OCR_CONFIG_KEY, JSON.stringify(ocrConfig));
+  showOcrConfigStatus('✅ OCR 配置已保存', 'ok');
+}
+
+function saveOcrConfigSilent() {
+  localStorage.setItem(OCR_CONFIG_KEY, JSON.stringify(ocrConfig));
+}
+
+function showOcrConfigStatus(msg, type) {
+  var el = document.getElementById('ocrConfigStatus');
+  if (el) { el.textContent = msg; el.style.color = type === 'error' ? '#e74c3c' : '#27ae60'; setTimeout(function() { el.textContent = ''; }, 3000); }
+}
+
+function populateOcrConfigFields() {
+  var sidEl = document.getElementById('ocrSecretId');
+  var skeyEl = document.getElementById('ocrSecretKey');
+  if (sidEl) sidEl.value = ocrConfig.secretId || '';
+  if (skeyEl) skeyEl.value = ocrConfig.secretKey || '';
+}
+
+// ============================================================
 // SUPABASE CLOUD SYNC (fetch-only, zero external dependency)
 // ============================================================
 
@@ -3634,6 +3699,8 @@ async function pullFromSupabase() {
 
 function renderSettings() {
   loadSupabaseConfig();
+  loadOcrConfig();
+  populateOcrConfigFields();
   const urlEl = document.getElementById('sbUrl');
   const keyEl = document.getElementById('sbKey');
   const codeEl = document.getElementById('sbCode');
@@ -3769,6 +3836,7 @@ function init() {
   loadState();
   loadSampleData();
   loadSupabaseConfig();
+  loadOcrConfig();
 
   // Set default dates
   if (!state.snapshotDate) state.snapshotDate = formatDateISO(new Date());
@@ -3853,6 +3921,723 @@ function bkRenderImgThumbs() {
   }).join('');
 }
 
+// ============================================================
+// 腾讯云 OCR 图片识别核心函数
+// ============================================================
+
+/**
+ * 将图片文件转为 Base64（去掉 data:image/xxx;base64, 前缀）
+ */
+function imageToBase64(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var base64 = e.target.result;
+      // 去掉前缀 "data:image/xxx;base64,"
+      var commaIdx = base64.indexOf(',');
+      resolve(commaIdx > -1 ? base64.substring(commaIdx + 1) : base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * TC3-HMAC-SHA256 签名（腾讯云 API v3 认证）
+ */
+function tc3Sign(secretId, secretKey, service, action, payloadJson, timestamp) {
+  var algorithm = 'TC3-HMAC-SHA256';
+  var host = service + '.tencentcloudapi.com';
+  var endpoint = 'https://' + host;
+
+  // 1. 拼接规范请求串
+  var httpRequestMethod = 'POST';
+  var canonicalUri = '/';
+  var canonicalQueryString = '';
+  var canonicalHeaders = 'content-type:application/json; charset=utf-8\nhost:' + host + '\nx-tc-action:' + action.toLowerCase() + '\n';
+  var signedHeaders = 'content-type;host;x-tc-action';
+  var hashedRequestPayload = sha256Hex(payloadJson);
+  var canonicalRequest = httpRequestMethod + '\n' + canonicalUri + '\n' + canonicalQueryString + '\n' + canonicalHeaders + '\n' + signedHeaders + '\n' + hashedRequestPayload;
+
+  // 2. 拼接待签名字符串
+  var dateStr = new Date(timestamp * 1000).toISOString().substr(0, 10).replace(/-/g, '');
+  var credentialScope = dateStr + '/' + service + '/tc3_request';
+  var hashedCanonicalRequest = sha256Hex(canonicalRequest);
+  var stringToSign = algorithm + '\n' + timestamp + '\n' + credentialScope + '\n' + hashedCanonicalRequest;
+
+  // 3. 计算签名
+  var secretDate = hmacSha256('TC3' + secretKey, dateStr);
+  var secretService = hmacSha256(secretDate, service);
+  var secretSigning = hmacSha256(secretService, 'tc3_request');
+  var signature = hmacSha256Hex(secretSigning, stringToSign);
+
+  // 4. 构建 Authorization
+  var authorization = algorithm + ' Credential=' + secretId + '/' + credentialScope + ', SignedHeaders=' + signedHeaders + ', Signature=' + signature;
+
+  return authorization;
+}
+
+/**
+ * SHA-256 哈希（返回 hex 字符串） - 纯 JS 实现，零依赖
+ */
+function sha256Hex(message) {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    // 浏览器环境：使用 Web Crypto API
+    var encoder = new TextEncoder();
+    var data = encoder.encode(message);
+    return crypto.subtle.digest('SHA-256', data).then(function(hashBuffer) {
+      var hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+    });
+  }
+  // Fallback: 同步返回（Node 环境等），此处主要走浏览器路径
+  return Promise.resolve('');
+}
+
+function sha256Sync(message) {
+  // 同步版本，用于签名计算中的中间步骤
+  // 注意：浏览器中 crypto.subtle 是异步的，但我们在 async 函数中使用所以没问题
+  return sha256Hex(message);
+}
+
+/**
+ * HMAC-SHA256（返回 ArrayBuffer） - 使用 Web Crypto API
+ */
+function hmacSha256(key, message) {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    var encoder = new TextEncoder();
+    var keyData = typeof key === 'string' ? encoder.encode(key) : key;
+    var msgData = typeof message === 'string' ? encoder.encode(message) : message;
+    return crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+      .then(function(cryptoKey) { return crypto.subtle.sign('HMAC', cryptoKey, msgData); })
+      .then(function(sig) { return new Uint8Array(sig); });
+  }
+  return Promise.resolve(new Uint8Array(0));
+}
+
+function hmacSha256Hex(key, message) {
+  return hmacSha256(key, message).then(function(buf) {
+    return Array.from(buf).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+  });
+}
+
+/**
+ * 调用腾讯云通用印刷体 OCR（GeneralBasicOCR）
+ * 用于识别：拼多多/淘宝订单、小红书订单、支付截图、通用收据
+ */
+async function callTencentOCR(imageBase64) {
+  if (!ocrConfig.secretId || !ocrConfig.secretKey) {
+    throw new Error('OCR 未配置：请在设置页填写腾讯云 SecretId 和 SecretKey');
+  }
+
+  var service = 'ocr';
+  var action = 'GeneralBasicOCR';
+  var version = '2018-11-19';
+  var timestamp = Math.floor(Date.now() / 1000);
+
+  var payload = JSON.stringify({
+    ImageBase64: imageBase64,
+    PdfPageNumber: null
+  });
+
+  // 需要同步计算签名（因为要拼到 header 里）
+  var auth = await computeAuthorization(ocrConfig.secretId, ocrConfig.secretKey, service, action, payload, timestamp);
+
+  var response = await fetch('https://ocr.tencentcloudapi.com/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Host': 'ocr.tencentcloudapi.com',
+      'X-TC-Action': action,
+      'X-TC-Version': version,
+      'X-Timestamp': timestamp.toString(),
+      'Authorization': auth
+    },
+    body: payload
+  });
+
+  if (!response.ok) {
+    var errText = await response.text().catch(function() { return ''; });
+    throw new Error('OCR API 错误 (' + response.status + '): ' + errText);
+  }
+
+  var result = await response.json();
+
+  if (result.Response.Error) {
+    throw new Error(result.Response.Error.Message || 'OCR 识别失败');
+  }
+
+  return result.Response.TextDets || [];
+}
+
+/**
+ * 调用腾讯云增值税发票 OCR（VatInvoiceOCR）
+ * 用于识别：电子发票、增值税发票
+ */
+async function callTencentInvoiceOCR(imageBase64) {
+  if (!ocrConfig.secretId || !ocrConfig.secretKey) {
+    throw new Error('OCR 未配置');
+  }
+
+  var service = 'ocr';
+  var action = 'VatInvoiceOCR';
+  var version = '2018-11-19';
+  var timestamp = Math.floor(Date.now() / 1000);
+
+  var payload = JSON.stringify({
+    ImageBase64: imageBase64,
+    PdfPageNumber: null
+  });
+
+  var auth = await computeAuthorization(ocrConfig.secretId, ocrConfig.secretKey, service, action, payload, timestamp);
+
+  var response = await fetch('https://ocr.tencentcloudapi.com/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Host': 'ocr.tencentcloudapi.com',
+      'X-TC-Action': action,
+      'X-TC-Version': version,
+      'X-Timestamp': timestamp.toString(),
+      'Authorization': auth
+    },
+    body: payload
+  });
+
+  if (!response.ok) {
+    var errText = await response.text().catch(function() { return ''; });
+    throw new Error('发票 OCR 错误 (' + response.status + '): ' + errText);
+  }
+
+  var result = await response.json();
+
+  if (result.Response.Error) {
+    throw new Error(result.Response.Error.Message || '发票 OCR 失败');
+  }
+
+  return result.Response; // 发票结构化数据
+}
+
+/**
+ * 计算 Authorization header 值（异步版，内部处理 SHA-256 异步）
+ */
+async function computeAuthorization(secretId, secretKey, service, action, payloadJson, timestamp) {
+  var algorithm = 'TC3-HMAC-SHA256';
+  var host = service + '.tencentcloudapi.com';
+
+  // 1. 规范请求串
+  var httpRequestMethod = 'POST';
+  var canonicalUri = '/';
+  var canonicalQueryString = '';
+  var canonicalHeaders = 'content-type:application/json; charset=utf-8\nhost:' + host + '\nx-tc-action:' + action.toLowerCase() + '\n';
+  var signedHeaders = 'content-type;host;x-tc-action';
+
+  var hashedPayload = await sha256Hex(payloadJson);
+  var canonicalRequest = httpRequestMethod + '\n' + canonicalUri + '\n' + canonicalQueryString + '\n' + canonicalHeaders + '\n' + signedHeaders + '\n' + hashedPayload;
+
+  // 2. 待签名字符串
+  var dateStr = new Date(timestamp * 1000).toISOString().substr(0, 10).replace(/-/g, '');
+  var credentialScope = dateStr + '/' + service + '/tc3_request';
+  var hashedCanonReq = await sha256Hex(canonicalRequest);
+  var stringToSign = algorithm + '\n' + timestamp + '\n' + credentialScope + '\n' + hashedCanonReq;
+
+  // 3. 签名
+  var secretDate = await hmacSha256('TC3' + secretKey, dateStr);
+  var secretService = await hmacSha256(secretDate, service);
+  var secretSigning = await hmacSha256(secretService, 'tc3_request');
+  var signature = await hmacSha256Hex(secretSigning, stringToSign);
+
+  // 4. Authorization
+  return algorithm + ' Credential=' + secretId + '/' + credentialScope + ', SignedHeaders=' + signedHeaders + ', Signature=' + signature;
+}
+
+/**
+ * 从 OCR 文本检测结果中提取账单信息
+ * 支持类型：拼多多/淘宝订单、电子发票、小红书/抖音电商、微信/支付宝支付截图
+ */
+function parseOCRResultToBills(textDets, invoiceData, fileName) {
+  var bills = [];
+
+  if (!textDets || textDets.length === 0) {
+    // 尝试从发票结构化数据解析
+    if (invoiceData) {
+      return parseInvoiceData(invoiceData, fileName);
+    }
+    return bills;
+  }
+
+  // 拼接所有识别到的文本
+  var fullText = textDets.map(function(d) { return d.DetectedText || ''; }).join('\n');
+
+  // 判断图片类型
+  var imgType = detectImageType(fullText);
+
+  switch(imgType) {
+    case 'pdd':
+      bills = parsePDDOrder(textDets, fullText, fileName);
+      break;
+    case 'invoice':
+      // 如果有发票结构化数据优先用，否则从文本解析
+      if (invoiceData) {
+        bills = parseInvoiceData(invoiceData, fileName);
+      } else {
+        bills = parseInvoiceFromText(textDets, fullText, fileName);
+      }
+      break;
+    case 'xiaohongshu':
+      bills = parseXHSOrder(textDets, fullText, fileName);
+      break;
+    case 'payment':
+      bills = parsePaymentScreenshot(textDets, fullText, fileName);
+      break;
+    default:
+      // 通用解析：尝试从文本中提取金额和日期
+      bills = parseGenericReceipt(textDets, fullText, fileName);
+  }
+
+  return bills;
+}
+
+/**
+ * 检测图片类型
+ */
+function detectImageType(text) {
+  var t = text.toLowerCase();
+  if (t.indexOf('拼多多') >= 0 || t.indexOf('pinduoduo') >= 0 || t.indexOf('pdd') >= 0) return 'pdd';
+  if (t.indexOf('发票') >= 0 || t.indexOf('invoice') >= 0 || t.indexOf('价税合计') >= 0 || t.indexOf('开票日期') >= 0) return 'invoice';
+  if (t.indexOf('小红书') >= 0 || t.indexOf('xiaohongshu') >= 0 || t.indexOf('red') >= 0) return 'xiaohongshu';
+  if (t.indexOf('微信支付') >= 0 || t.indexOf('支付宝') >= 0 || t.indexOf('付款金额') >= 0 || t.indexOf('交易单号') >= 0) return 'payment';
+  if (t.indexOf('淘宝') >= 0 || t.indexOf('taobao') >= 0 || t.indexOf('天猫') >= 0) return 'pdd'; // 淘宝/天猫复用拼多多逻辑
+  return 'generic';
+}
+
+/**
+ * 解析拼多多/淘宝订单
+ */
+function parsePDDOrder(textDets, fullText, fileName) {
+  var bills = [];
+  var text = fullText;
+
+  // 提取商家名称
+  var shopMatch = text.match(/店铺名[称：:\s]*([^\n\r]+)/);
+  var shopName = shopMatch ? shopMatch[1].trim() : '';
+
+  // 提取商品名称
+  var productMatch = text.match(/商品名[称：:\s]*([^\n\r]+)/);
+  var productName = productMatch ? productMatch[1].trim() : '';
+
+  // 提取实付金额（优先"实付款"/"实付金额"）
+  var amountMatch = text.match(/实付[款额]?[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/实付款[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/总价[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/¥\s*(\d+\.?\d*)/);
+  var amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
+
+  // 提取下单时间
+  var dateMatch = text.match(/(\d{4}[-年]\d{1,2}[-月]\d{1,2}[日]?\s*\d{1,2}[:：]\d{2})/) ||
+                  text.match(/创建时间[：:\s]*(\d{4}[^\n\r]*)/) ||
+                  text.match(/下单时间[：:\s]*(\d{4}[^\n\r]*)/) ||
+                  text.match(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/);
+  var dateStr = dateMatch ? dateMatch[0].replace(/年|月/g, '-').replace(/日/g, '') : formatDateISO(new Date());
+
+  // 自动分类
+  var category = autoCategorize(productName || shopName || text);
+
+  if (amount > 0) {
+    bills.push({
+      id: genId(),
+      date: normalizeDate(dateStr),
+      summary: (productName || shopName || '拼多多订单').substring(0, 50),
+      type: 'expense',
+      category: category,
+      amount: amount,
+      note: '来源：' + fileName + '（OCR自动识别）',
+      source: 'ocr-pdd',
+      time: '',
+      groupId: null,
+      dedup: false,
+      linkedDrop: false,
+      checked: false,
+      status: 'pending'
+    });
+  }
+
+  return bills;
+}
+
+/**
+ * 解析电子发票（结构化数据）
+ */
+function parseInvoiceData(invData, fileName) {
+  var bills = [];
+
+  // 价税合计（总金额）
+  var totalAmount = parseFloat(invData.TotalAmount || invData.Amount || '0') || 0;
+  if (!totalAmount && invData.VatInvoiceInfo) {
+    totalAmount = parseFloat(invData.VatInvoiceInfo.TotalAmountWithTax || '0') || 0;
+  }
+
+  // 开票日期
+  var dateStr = invData.IssueDate || invData.InvoiceDate || formatDateISO(new Date());
+
+  // 购买方/项目信息
+  var buyerName = '';
+  if (invData.BuyerInfo) buyerName = invData.BuyerInfo.Name || invData.BuyerInfo.BuyerName || '';
+  var items = invData.VatInvoiceInfo ? (invData.VatInvoiceInfo.ItemInfos || []) : [];
+  var itemNames = items.map(function(it) { return it.ItemName || it.ProductName || ''; }).filter(Boolean);
+
+  var summary = itemNames.length > 0 ? itemNames.join('、').substring(0, 50) : (buyerName || '发票支出');
+
+  if (totalAmount > 0) {
+    bills.push({
+      id: genId(),
+      date: normalizeDate(dateStr),
+      summary: summary,
+      type: 'expense',
+      category: autoCategorize(summary),
+      amount: totalAmount,
+      note: '来源：' + fileName + '（发票OCR自动识别）',
+      source: 'ocr-invoice',
+      time: '',
+      groupId: null,
+      dedup: false,
+      linkedDrop: false,
+      checked: false,
+      status: 'pending'
+    });
+  }
+
+  return bills;
+}
+
+/**
+ * 从文本解析发票（fallback，无结构化数据时）
+ */
+function parseInvoiceFromText(textDets, fullText, fileName) {
+  var bills = [];
+  var text = fullText;
+
+  // 价税合计
+  var amtMatch = text.match(/价税合计[（(][^)]*[）)][：:\s]*¥?(\d+\.?\d*)/) ||
+                 text.match(/价税合计[：:\s]*¥?(\d+\.?\d*)/) ||
+                 text.match(/合计[：:\s]*¥?(\d+\.?\d*)/) ||
+                 text.match(/¥\s*(\d+\.?\d*)/);
+  var amount = amtMatch ? parseFloat(amtMatch[1]) : 0;
+
+  // 开票日期
+  var dateMatch = text.match(/开票日期[：:\s]*(\d{4}[^\n\r]*)/) ||
+                  text.match(/(\d{4}[-年]\d{1,2}[-月]\d{1,2})/);
+  var dateStr = dateMatch ? dateMatch[1].replace(/年|月/g, '-').replace(/日/g, '') : formatDateISO(new Date());
+
+  // 项目名称
+  var itemMatch = text.match(/(?:项目|货物|服务)[名称：:\s]*([^\n\r￥¥]+)/i);
+  var summary = itemMatch ? itemMatch[1].trim().substring(0, 50) : '发票支出';
+
+  if (amount > 0) {
+    bills.push({
+      id: genId(),
+      date: normalizeDate(dateStr),
+      summary: summary,
+      type: 'expense',
+      category: autoCategorize(summary),
+      amount: amount,
+      note: '来源：' + fileName + '（发票OCR自动识别）',
+      source: 'ocr-invoice',
+      time: '',
+      groupId: null,
+      dedup: false,
+      linkedDrop: false,
+      checked: false,
+      status: 'pending'
+    });
+  }
+
+  return bills;
+}
+
+/**
+ * 解析小红书/抖音电商订单
+ */
+function parseXHSOrder(textDets, fullText, fileName) {
+  var bills = [];
+  var text = fullText;
+
+  // 店铺名
+  var shopMatch = text.match(/店铺[名：:\s]*([^\n\r]+)/);
+  var shopName = shopMatch ? shopMatch[1].trim() : '';
+
+  // 商品名
+  var productMatch = text.match(/商品[名：:\s]*([^\n\r]+)/);
+  var productName = productMatch ? productMatch[1].trim() : '';
+
+  // 实付金额
+  var amountMatch = text.match(/实付[款额]?[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/支付金额[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/¥\s*(\d+\.?\d*)/);
+  var amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
+
+  // 下单时间
+  var dateMatch = text.match(/(\d{4}[-年]\d{1,2}[-月]\d{1,2}[日]?\s*\d{1,2}[:：]\d{2})/) ||
+                  text.match(/下单时间[：:\s]*(\d{4}[^\n\r]*)/) ||
+                  text.match(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/);
+  var dateStr = dateMatch ? dateMatch[0].replace(/年|月/g, '-').replace(/日/g, '') : formatDateISO(new Date());
+
+  if (amount > 0) {
+    bills.push({
+      id: genId(),
+      date: normalizeDate(dateStr),
+      summary: (productName || shopName || '小红书订单').substring(0, 50),
+      type: 'expense',
+      category: autoCategorize(productName || shopName || ''),
+      amount: amount,
+      note: '来源：' + fileName + '（OCR自动识别）',
+      source: 'ocr-xhs',
+      time: '',
+      groupId: null,
+      dedup: false,
+      linkedDrop: false,
+      checked: false,
+      status: 'pending'
+    });
+  }
+
+  return bills;
+}
+
+/**
+ * 解析微信/支付宝支付截图
+ */
+function parsePaymentScreenshot(textDets, fullText, fileName) {
+  var bills = [];
+  var text = fullText;
+
+  // 付款金额
+  var amountMatch = text.match(/付款金额[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/支付金额[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/(?:收款|付款)[：:\s]*¥?(\d+\.?\d*)/) ||
+                    text.match(/¥\s*(\d+\.?\d*)/);
+  var amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
+
+  // 商品/备注
+  var goodsMatch = text.match(/商品[：:\s]*([^\n\r]+)/) ||
+                   text.match(/收款方[：:\s]*([^\n\r]+)/) ||
+                   text.match(/付款说明[：:\s]*([^\n\r]+)/);
+  var summary = goodsMatch ? goodsMatch[1].trim().substring(0, 50) : '支付支出';
+
+  // 时间
+  var dateMatch = text.match(/(\d{4}[-年]\d{1,2}[-月]\d{1,2}\s*\d{1,2}[:：]\d{2})/) ||
+                  text.match(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/);
+  var dateStr = dateMatch ? dateMatch[0].replace(/年|月/g, '-').replace(/日/g, '') : formatDateISO(new Date());
+
+  if (amount > 0) {
+    bills.push({
+      id: genId(),
+      date: normalizeDate(dateStr),
+      summary: summary,
+      type: 'expense',
+      category: autoCategorize(summary),
+      amount: amount,
+      note: '来源：' + fileName + '（支付截图OCR识别）',
+      source: 'ocr-payment',
+      time: '',
+      groupId: null,
+      dedup: false,
+      linkedDrop: false,
+      checked: false,
+      status: 'pending'
+    });
+  }
+
+  return bills;
+}
+
+/**
+ * 通用收据解析（无法确定具体类型时的 fallback）
+ */
+function parseGenericReceipt(textDets, fullText, fileName) {
+  var bills = [];
+  var text = fullText;
+
+  // 尝试找金额
+  var amountMatch = text.match(/¥\s*(\d+\.?\d*)/) ||
+                    text.match(/(\d+\.\d{2})\s*元/) ||
+                    text.match(/金额[：:\s]*(\d+\.?\d*)/);
+  var amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
+
+  // 找日期
+  var dateMatch = text.match(/(\d{4}[-年]\d{1,2}[-月]\d{1,2})/);
+  var dateStr = dateMatch ? dateMatch[1].replace(/年|月/g, '-').replace(/日/g, '') : formatDateISO(new Date());
+
+  if (amount > 0) {
+    bills.push({
+      id: genId(),
+      date: normalizeDate(dateStr),
+      summary: text.substring(0, 50).replace(/\n/g, ' ').trim(),
+      type: 'expense',
+      category: '其他支出',
+      amount: amount,
+      note: '来源：' + fileName + '（OCR自动识别，请核对）',
+      source: 'ocr-generic',
+      time: '',
+      groupId: null,
+      dedup: false,
+      linkedDrop: false,
+      checked: false,
+      status: 'pending'
+    });
+  }
+
+  return bills;
+}
+
+/**
+ * 根据摘要文字自动分类
+ */
+function autoCategorize(summary) {
+  if (!summary) return '其他支出';
+  var s = summary.toLowerCase();
+  var rules = [
+    [/餐|饮|食|外卖|美团|饿了么|肯德基|麦当劳|奶茶|咖啡|火锅|烧烤/, '餐饮美食'],
+    [/超市|购物|淘宝|京东|拼多多|亚马逊|服装|鞋|包|美妆|护肤|化妆/, '日用百货'],
+    [/交通|打车|滴滴|公交|地铁|加油|停车|高速|火车|飞机|机票/, '交通出行'],
+    [/房租|房贷|物业|水电|燃气|宽带|网费|话费|手机充值/, '住房居家'],
+    [/教育|培训|课程|书籍|文具|学校|学费/, '教育培训'],
+    [/医疗|药|医院|体检|牙科|眼科|健身|运动/, '医疗健康'],
+    [/电影|游戏|视频|音乐|娱乐|KTV|演出/, '休闲娱乐'],
+    [/红包|转账|人情|礼物|婚礼/, '人情往来'],
+    [/宠物|狗|猫|粮/, '宠物用品'],
+    [/办公|文具|打印|快递/, '办公学习'],
+  ];
+  for (var i = 0; i < rules.length; i++) {
+    if (rules[i][0].test(s)) return rules[i][1];
+  }
+  return '其他支出';
+}
+
+/**
+ * 标准化日期格式为 YYYY-MM-DD
+ */
+function normalizeDate(dateStr) {
+  if (!dateStr) return formatDateISO(new Date());
+  // 清理常见格式
+  var cleaned = dateStr.replace(/[年月]/g, '-').replace(/[日]/g, '').trim();
+  // 尝试直接匹配 YYYY-MM-DD
+  var m = cleaned.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  }
+  return formatDateISO(new Date());
+}
+
+/**
+ * 批量识别图片 → 返回账单数组
+ * 流程：逐张转base64 → 调OCR API → 解析结果
+ */
+async function recognizeImages(images) {
+  var allBills = [];
+  var total = images.length;
+
+  // 检查 OCR 配置
+  if (!ocrConfig.secretId || !ocrConfig.secretKey) {
+    alert('⚠️ 图片识别需要配置腾讯云 OCR 密钥\n\n请前往「设置」页面填写 SecretId 和 SecretKey');
+    return allBills;
+  }
+
+  // 显示识别中状态
+  showOcrProgress('正在识别 ' + total + ' 张图片...', 0);
+
+  for (var i = 0; i < images.length; i++) {
+    var img = images[i];
+    var fileName = img.name || ('图片' + (i + 1));
+
+    try {
+      showOcrProgress('正在识别（' + (i + 1) + '/' + total + '）：' + fileName, (i / total) * 100);
+
+      // 1. 图片转 base64
+      var base64 = await imageToBase64(img);
+
+      // 2. 先用通用 OCR 识别
+      var textDets = await callTencentOCR(base64);
+
+      // 3. 判断是否为发票，如果是则额外调用发票 OCR
+      var fullText = textDets.map(function(d) { return d.DetectedText || ''; }).join('\n');
+      var invoiceData = null;
+      if (detectImageType(fullText) === 'invoice') {
+        try { invoiceData = await callTencentInvoiceOCR(base64); } catch(e) { console.warn('发票OCR失败，使用通用OCR结果', e); }
+      }
+
+      // 4. 解析为账单
+      var imgBills = parseOCRResultToBills(textDets, invoiceData, fileName);
+      allBills = allBills.concat(imgBills);
+
+      // 标记缩略图状态
+      markImageThumb(i, imgBills.length > 0 ? 'ok' : 'empty');
+
+    } catch(err) {
+      console.error('图片识别失败:', fileName, err);
+      markImageThumb(i, 'error');
+      // 即使某张失败也继续处理其他
+    }
+  }
+
+  showOcrProgress('识别完成，共识别到 ' + allBills.length + ' 条账单', 100);
+  setTimeout(hideOcrProgress, 2000);
+
+  return allBills;
+}
+
+/**
+ * 显示 OCR 识别进度
+ */
+function showOcrProgress(msg, percent) {
+  var el = document.getElementById('ocrProgressBar');
+  if (!el) {
+    // 动态创建进度条
+    el = document.createElement('div');
+    el.id = 'ocrProgressBar';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:12px 20px;z-index:9999;display:flex;align-items:center;gap:12px;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.2);';
+    el.innerHTML = '<div style="flex:1;"><div class="ocr-progress-msg" style="font-weight:500;">' + msg + '</div><div style="background:rgba(255,255,255,.3);height:4px;border-radius:2px;margin-top:6px;overflow:hidden;"><div class="ocr-progress-bar" style="height:100%;background:#fff;border-radius:2px;transition:width .3s;width:' + percent + '%;"></div></div></div>';
+    document.body.appendChild(el);
+  } else {
+    el.style.display = 'flex';
+    el.querySelector('.ocr-progress-msg').textContent = msg;
+    el.querySelector('.ocr-progress-bar').style.width = percent + '%';
+  }
+}
+
+function hideOcrProgress() {
+  var el = document.getElementById('ocrProgressBar');
+  if (el) { el.style.display = 'none'; }
+}
+
+/**
+ * 标记缩略图识别状态（ok/error/empty）
+ */
+function markImageThumb(index, status) {
+  var container = document.getElementById('bkImgThumbs');
+  if (!container) return;
+  var thumbs = container.querySelectorAll('.bk-img-thumb');
+  if (thumbs[index]) {
+    // 移除旧标记
+    var oldBadge = thumbs[index].querySelector('.img-status-badge');
+    if (oldBadge) oldBadge.remove();
+
+    var badge = document.createElement('span');
+    badge.className = 'img-status-badge';
+    if (status === 'ok') {
+      badge.textContent = '✓';
+      badge.style.cssText = 'position:absolute;bottom:4px;right:4px;background:#27ae60;color:#fff;font-size:12px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;';
+    } else if (status === 'error') {
+      badge.textContent = '✗';
+      badge.style.cssText = 'position:absolute;bottom:4px;right:4px;background:#e74c3c;color:#fff;font-size:12px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;';
+    } else {
+      badge.textContent = '○';
+      badge.style.cssText = 'position:absolute;bottom:4px;right:4px;background:#bbb;color:#fff;font-size:12px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;';
+    }
+    thumbs[index].appendChild(badge);
+  }
+}
+
 function bkHandleFiles(fileList) {
   const newFiles = Array.from(fileList);
   _bkState.files.push(...newFiles);
@@ -3920,6 +4705,12 @@ async function bkRecognize() {
       const xlsxBills = await bkParseXLSXFile(f);
       bills = bills.concat(xlsxBills);
     }
+  }
+
+  // 3. 图片识别（腾讯云 OCR）
+  if (_bkState.images.length > 0) {
+    var ocrBills = await recognizeImages(_bkState.images);
+    bills = bills.concat(ocrBills);
   }
 
   // 识别阶段去重（批次内：完全重复去重 + 支付穿透关联）
