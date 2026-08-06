@@ -122,12 +122,7 @@ body {
   flex: 1;
   min-height: 100vh;
   padding: 24px 32px;
-  max-width: 1200px;
 }
-/* 月度收支页：铺满整页，不受 1200px 限制 */
-.main-content:has(#page-monthly.active) { max-width: none; }
-/* 总览页：铺满整页，不受 1200px 限制 */
-.main-content:has(#page-overview.active) { max-width: none; }
 
 /* ===== Overview Main Layout: Left(savings+metrics+assets) | Right(budget) ===== */
 .overview-main-layout {
@@ -645,51 +640,22 @@ body {
 .bk-stat-warn { background: linear-gradient(135deg, #FFF3E0, #FFF8E1); border-color: #FFCC80; }
 .bk-stat-warn .bk-stat-val { color: #EF6C00; }
 
-/* Three input cards side by side (now 2 cols in main + sidebar) */
+/* Three input cards side by side (equal width) */
 .bk-layout-grid {
-  display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 16px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 .bk-main-col {
   display: flex;
   flex-direction: column;
   gap: 0;
   min-width: 0;
+  width: 100%;
 }
-.bk-sidebar {
-  position: sticky;
-  top: 72px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.bk-sidebar-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  box-shadow: var(--shadow-card);
-}
-.bk-sidebar-close {
-  margin-left: auto;
-  font-size: 16px;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  line-height: 1;
-}
-.bk-sidebar-close:hover { background: var(--color-primary-bg); color: var(--color-primary); }
-.bk-sidebar-dropzone { min-height: 160px; }
-.bk-sidebar-collapsed { display: none; }
-
 .bk-input-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -943,8 +909,6 @@ body {
   .bk-stats-bar { grid-template-columns: repeat(3, 1fr); }
   .bk-stats-bar .bk-stat-card:nth-child(4),
   .bk-stats-bar .bk-stat-card:nth-child(5) { grid-column: span 1; }
-  .bk-layout-grid { grid-template-columns: 1fr; }
-  .bk-sidebar { position: static; }
   .bk-input-row { grid-template-columns: 1fr; }
   .bk-action-bar { flex-wrap: wrap; }
   .bk-btn-primary, .bk-btn-secondary { flex: 1; min-width: 120px; }
@@ -1497,7 +1461,6 @@ input[type="number"] { -moz-appearance: textfield; }
 [data-theme="dark"] .settings-sync-bar.error { background: rgba(226,99,99,0.15); color: #F0A0A0; }
 /* ===== 智能识别页 (recognize) ===== */
 :root{ --rec-wx:#07C160; --rec-ali:#1677FF; --rec-tb:#FF5000; --rec-pdd:#E22E1F; }
-.main-content:has(#page-bookkeeping.active){ max-width:none; }
 
 .rec-steps{display:flex; align-items:center; gap:0; flex-wrap:wrap; margin-bottom:20px;}
 .rec-step{display:flex; align-items:center; gap:10px;}
@@ -1825,6 +1788,28 @@ input[type="number"] { -moz-appearance: textfield; }
             <div class="bk-img-thumbs" id="bkImgThumbs"></div>
           </div>
 
+          <!-- 卡片3：账单文件 -->
+          <div class="bk-input-card">
+            <div class="bk-card-header">
+              <span class="bk-card-icon">📄</span>
+              <span class="bk-card-title">账单文件</span>
+              <span class="bk-card-badge" id="fileBadge">0个</span>
+            </div>
+            <div class="bk-card-actions">
+              <button class="bk-act-btn" onclick="document.getElementById('bkFileInput').click()">+添加文件</button>
+              <button class="bk-act-btn" onclick="bkClearFiles()">清空</button>
+            </div>
+            <div class="bk-dropzone" id="bkFileDropzone" onclick="document.getElementById('bkFileInput').click()">
+              <div class="bk-dropzone-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M9 4v4h6"/></svg>
+              </div>
+              <p class="bk-dropzone-text">请选择文件或<br>拖拽文件至此处</p>
+              <p class="bk-dropzone-hint">支持 CSV / XLSX 拖拽导入</p>
+              <input type="file" id="bkFileInput" accept=".csv,.xlsx,.xls" multiple hidden onchange="bkHandleFiles(this.files)">
+            </div>
+            <div class="bk-file-list" id="bkFileList"></div>
+          </div>
+
         </div><!-- /bk-input-row -->
 
         <!-- ===== 操作按钮行 ===== -->
@@ -1957,34 +1942,6 @@ input[type="number"] { -moz-appearance: textfield; }
         </div>
 
       </div><!-- /bk-main-col -->
-
-      <!-- ===== 右侧边栏 ===== -->
-      <div class="bk-sidebar">
-
-        <!-- 账单文件上传面板 -->
-        <div class="bk-sidebar-card">
-          <div class="bk-card-header">
-            <span class="bk-card-icon">📄</span>
-            <span class="bk-card-title">账单文件</span>
-            <span class="bk-card-badge" id="fileBadge">0个</span>
-            <button class="bk-sidebar-close" onclick="toggleSidebarFile()" title="收起">⊗</button>
-          </div>
-          <div class="bk-card-actions">
-            <button class="bk-act-btn" onclick="document.getElementById('bkFileInput').click()">+添加文件</button>
-            <button class="bk-act-btn" onclick="bkClearFiles()">清空</button>
-          </div>
-          <div class="bk-dropzone bk-sidebar-dropzone" id="bkFileDropzone" onclick="document.getElementById('bkFileInput').click()">
-            <div class="bk-dropzone-icon">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M9 4v4h6"/></svg>
-            </div>
-            <p class="bk-dropzone-text">请选择文件或<br>拖拽文件至此处</p>
-            <p class="bk-dropzone-hint">支持 CSV / XLSX 拖拽导入</p>
-            <input type="file" id="bkFileInput" accept=".csv,.xlsx,.xls" multiple hidden onchange="bkHandleFiles(this.files)">
-          </div>
-          <div class="bk-file-list" id="bkFileList"></div>
-        </div>
-
-      </div><!-- /bk-sidebar -->
 
     </div><!-- /bk-layout-grid -->
 
