@@ -4140,282 +4140,298 @@ async function bkParseXLSXFile(file) {
   }
 }
 
-// ========== 内置纯 JS DEFLATE 解压器（RFC 1951）==========
-function inflateRawData(compressed, expectedSize) {
-  // 基于 RFC 1951 的最小实现，支持 ZIP/xlsx 中的 deflate 流
-  const bits = new BitStream(compressed);
-  const output = new Uint8Array(expectedSize || (compressed.length * 6));
-  let outPos = 0;
+// ========== XLSX 内部 XML 解析（浏览器原生 DOMParser，支持 sharedStrings / inlineStr）==========
 
-  // Huffman 表构建辅助
-  function buildHuffmanLengths(lengths) {
-    const maxBits = Math.max(...lengths.filter(l => l > 0), 0);
-    if (maxBits === 0) return null;
-    const bl_count = new Uint16Array(maxBits + 1);
-    for (const l of lengths) if (l > 0) bl_count[l]++;
-    let code = 0;
-    const next_code = new Uint32Array(maxBits + 1);
-    for (let bits = 1; bits <= maxBits; bits++) {
-      code = (code + bl_count[bits - 1]) << 1;
-      next_code[bits] = code;
-    }
-    const table = {};
-    for (let i = 0; i < lengths.length; i++) {
-      if (lengths[i] !== 0) {
-        table[next_code[lengths[i]]++] = i;
-      }
-    }
-    return { table, maxBits };
+// 共享字符串表 → 字符串数组
+function parseSharedStrings(xmlBytes) {
+  const xml = new TextDecoder().decode(xmlBytes);
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const siList = doc.getElementsByTagName('si');
+  const out = [];
+  for (let i = 0; i < siList.length; i++) {
+    const si = siList.item(i);
+    const tList = si.getElementsByTagName('t');
+    let s = '';
+    for (let k = 0; k < tList.length; k++) s += (tList.item(k).textContent || '');
+    out.push(s);
   }
-
-  function decodeSymbol(bitsStream, hf) {
-    let code = 0;
-    for (let len = 1; len <= hf.maxBits; len++) {
-      code = (code << 1) | bitsStream.readBit();
-      if (hf.table.hasOwnProperty(code)) return hf.table[code];
-    }
-    throw new Error('无效的 Huffman 编码');
-  }
-
-  // 固定 Huffman 表（RFC 1951 §3.2.6）
-  const fixedLitLengths = [];
-  for (let i = 0; i <= 143; i++) fixedLitLengths.push(8);
-  for (let i = 144; i <= 255; i++) fixedLitLengths.push(9);
-  for (let i = 256; i <= 279; i++) fixedLitLengths.push(7);
-  for (let i = 280; i <= 287; i++) fixedLitLengths.push(8);
-  const fixedDistLengths = new Array(32).fill(5);
-
-  const fixedLitHuff = buildHuffmanLengths(fixedLitLengths);
-  const fixedDistHuff = buildHuffmanLengths(fixedDistLengths);
-
-  // 动态 Huffman 表解码用的码长字母表顺序
-  const CODELEN_ORDER = [16,17,18,0,8,7,9,10,11,12,13,14,1,2,3,4,5,6];
-  // 额外位的长度（长度/距离码 257-285 / 0-29）
-  const LEN_EXTRA_BITS = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
-  const LEN_BASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
-  const DIST_EXTRA_BITS = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
-  const DIST_BASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
-
-  let litHuff = fixedLitHuff, distHuff = fixedDistHuff;
-
-  while (true) {
-    const sym = decodeSymbol(bits, litHuff);
-    if (sym < 256) {
-      // 字面字节
-      if (outPos >= output.length) {
-        const bigger = new Uint8Array(output.length * 2);
-        bigger.set(output);
-        bigger[outPos] = sym;
-        // 替换引用（外部变量）
-        Object.defineProperty ? null : 0;
-      }
-      output[outPos++] = sym;
-    } else if (sym === 256) {
-      // 块结束
-      break;
-    } else if (sym <= 285) {
-      // 长度/距离对
-      const lenIdx = sym - 257;
-      const length = LEN_BASE[lenIdx] + bits.readBits(LEN_EXTRA_BITS[lenIdx]);
-      const distSym = decodeSymbol(bits, distHuff);
-      const distIdx = distSym;
-      const distance = DIST_BASE[distIdx] + bits.readBits(DIST_EXTRA_BITS[distIdx]);
-
-      // 复制（允许重叠）
-      let srcPos = outPos - distance;
-      for (let j = 0; j < length; j++) {
-        if (outPos >= output.length) {
-          const bigger = new Uint8Array(output.length * 2);
-          bigger.set(output);
-          // output = bigger; // 不能重新赋值外部变量，改用返回值策略
-          Object.defineProperty ? null : 0;
-        }
-        output[outPos++] = output[srcPos++];
-      }
-    } else if (sym === 0) {
-      // 未压缩块（不应出现在 raw deflate 中）
-      break;
-    } else {
-      throw new Error('未知符号: ' + sym);
-    }
-  }
-
-  return output.subarray(0, outPos);
+  return out;
 }
 
-// 位流读取器
-class BitStream {
-  constructor(data) {
-    this.data = data;
-    this.bytePos = 0;
-    this.bitPos = 0;
-  }
-  readBit() {
-    if (this.bytePos >= this.data.length) return 0;
-    const bit = (this.data[this.bytePos] >> this.bitPos) & 1;
-    this.bitPos++;
-    if (this.bitPos === 8) { this.bitPos = 0; this.bytePos++; }
-    return bit;
-  }
-  readBits(n) {
-    let val = 0;
-    for (let i = 0; i < n; i++) {
-      val |= this.readBit() << i;
-    }
-    return val;
-  }
-  alignToByte() {
-    if (this.bitPos > 0) { this.bitPos = 0; this.bytePos++; }
-  }
-  readBytes(n) {
-    this.alignToByte();
-    const result = this.data.slice(this.bytePos, this.bytePos + n);
-    this.bytePos += n;
-    return result;
-  }
+// 找到第一个工作表路径
+function findSheetPath(entries) {
+  const keys = Object.keys(entries || {});
+  for (const k of keys) if (/^xl\/worksheets\/sheet1\.xml$/i.test(k)) return k;
+  for (const k of keys) if (/^xl\/worksheets\/sheet\d+\.xml$/i.test(k)) return k;
+  return null;
 }
 
-// --- 完整 DEFLATE 解压（支持动态 Huffman）---
-const CODELEN_ORDER = [16,17,18,0,8,7,9,10,11,12,13,14,1,2,3,4,5,6];
-function fullInflate(compressed, expectedSize) {
-  const bits = new BitStream(compressed);
-  const MAX_OUTPUT = Math.max(expectedSize || 0, compressed.length * 50) + 2048;
+// 列字母（含 'r' 属性里的 A/B/...）→ 0 基索引
+function bkColLetterToIndex(ref) {
+  const m = (ref || '').match(/^([A-Za-z]+)/);
+  if (!m) return 0;
+  let idx = 0;
+  for (const ch of m[1].toUpperCase()) idx = idx * 26 + (ch.charCodeAt(0) - 64);
+  return idx - 1;
+}
 
-  // 构建 Huffman 表
-  function buildHL(codeLengths) {
-    const maxLen = Math.max(0, ...codeLengths);
-    if (maxLen === 0) return null;
-    const blCount = new Array(maxLen + 1).fill(0);
-    for (const cl of codeLengths) if (cl > 0) blCount[cl]++;
-    // 标准 Canonical Huffman 解码表构建
-    const nextCode = new Array(maxLen + 1).fill(0);
-    let code = 0;
-    for (let b = 1; b <= maxLen; b++) {
-      nextCode[b] = code;
-      code = (code + blCount[b]) << 1;
-    }
-    const entries = [];
-    for (let i = 0; i < codeLengths.length; i++) {
-      if (codeLengths[i] > 0) {
-        entries.push({ code: nextCode[codeLengths[i]]++, len: codeLengths[i], sym: i });
-      }
-    }
-    entries.sort((a, b) => (a.len !== b.len ? a.len - b.len : a.code - b.code));
-    return { entries, maxLen };
-  }
-
-  function decode(hf, name) {
-    let code = 0;
-    const isDbg = (name === 'clen');
-    for (let len = 1; len <= hf.maxLen; len++) {
-      code = (code << 1) | bits.readBit();
-      if (isDbg && len <= 6 && typeof console !== 'undefined' && console.error) console.error('DBG dec len='+len+' code='+code+' byte='+bits.bytePos+' bit='+bits.bitPos);
-      // 线性搜索（对于小表够快）
-      for (const e of hf.entries) {
-        if (e.len === len && e.code === code) return e.sym;
-      }
-    }
-    throw new Error('Huffman 解码失败 @byte=' + bits.bytePos + ' maxLen=' + hf.maxLen + ' code=' + code + ' table=' + name);
-  }
-
-  // 固定表
-  const fixLL = [];
-  for (let i=0;i<=143;i++) fixLL.push(8);
-  for (let i=144;i<=255;i++) fixLL.push(9);
-  for (let i=256;i<=279;i++) fixLL.push(7);
-  for (let i=280;i<=287;i++) fixLL.push(8);
-  const fixD = new Array(32).fill(5);
-  const fixLH = buildHL(fixLL), fixDH = buildHL(fixD);
-
-  const LEB = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
-  const LB = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
-  const DEB = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
-  const DB = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
-
-  const out = new Uint8Array(MAX_OUTPUT);
-  let op = 0;
-
-  let isFinal;
-  do {
-    isFinal = bits.readBit();
-    const btype = bits.readBits(2);
-
-    let litH, distH;
-    if (btype === 0) {
-      // 未压缩块
-      bits.alignToByte();
-      const len = bits.readBits(16);
-      const nlen = bits.readBits(16);
-      for (let i = 0; i < len; i++) out[op++] = bits.readBits(8);
-    } else if (btype === 1) {
-      litH = fixLH; distH = fixDH;
-      decodeBlock(litH, distH);
-    } else if (btype === 2) {
-      // 动态 Huffman
-      const hlit = bits.readBits(5) + 257;
-      const hdist = bits.readBits(5) + 1;
-      const hclen = bits.readBits(4) + 4;
-
-      const clenArr = new Array(19).fill(0);
-      for (let i = 0; i < hclen; i++) clenArr[CODELEN_ORDER[i]] = bits.readBits(3);
-      if (typeof console!=='undefined' && console.error) console.error('DBG hlit='+hlit+' hdist='+hdist+' hclen='+hclen+' JS_CLEN='+JSON.stringify(clenArr));
-      const codeLenH = buildHL(clenArr);
-      if (typeof console!=='undefined' && console.error) console.error('DBG codeLenH entries='+JSON.stringify(codeLenH.entries)+' maxLen='+codeLenH.maxLen);
-
-      // 解码码长序列
-      const allLens = [];
-      while (allLens.length < hlit + hdist) {
-        const s = decode(codeLenH, 'clen');
-        if (typeof console !== 'undefined' && console.error && allLens.length < 12) console.error('DBG RLE step='+allLens.length+' s='+s);
-        if (s < 16) {
-          allLens.push(s);
-        } else if (s === 16) {
-          const rep = bits.readBits(2) + 3;
-          if (typeof console !== 'undefined' && console.error && allLens.length < 12) console.error('DBG   rep16='+rep);
-          const last = allLens[allLens.length - 1];
-          for (let r = 0; r < rep; r++) allLens.push(last);
-        } else if (s === 17) {
-          const rep = bits.readBits(3) + 3;
-          if (typeof console !== 'undefined' && console.error && allLens.length < 12) console.error('DBG   rep17='+rep);
-          for (let r = 0; r < rep; r++) allLens.push(0);
-        } else {
-          const rep = bits.readBits(7) + 11;
-          for (let r = 0; r < rep; r++) allLens.push(0);
+// 工作表 XML → 二维数组（逐单元格，按 r 定位列；支持共享字符串与内联字符串）
+function parseSheetXML(xmlBytes, sharedStrings) {
+  const xml = new TextDecoder().decode(xmlBytes);
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const rowList = doc.getElementsByTagName('row');
+  const result = [];
+  for (let ri = 0; ri < rowList.length; ri++) {
+    const rowEl = rowList.item(ri);
+    const cellList = rowEl.getElementsByTagName('c');
+    const rowArr = [];
+    for (let ci = 0; ci < cellList.length; ci++) {
+      const cell = cellList.item(ci);
+      const ref = cell.getAttribute('r') || '';
+      const colIdx = bkColLetterToIndex(ref);
+      const t = (cell.getAttribute('t') || '').toLowerCase();
+      let val = '';
+      if (t === 's') {
+        const v = cell.getElementsByTagName('v').item(0);
+        if (v) {
+          const si = parseInt(v.textContent, 10);
+          val = (sharedStrings && sharedStrings[si]) || '';
         }
-      }
-
-      litH = buildHL(allLens.slice(0, hlit));
-      distH = buildHL(allLens.slice(hlit, hlit + hdist));
-      if (typeof console !== 'undefined' && console.error) {
-        console.error('DBG allLens FULL='+JSON.stringify(allLens));
-      }
-      decodeBlock(litH, distH);
-    } else {
-      throw new Error('保留块类型');
-    }
-  } while (!isFinal);
-
-  function decodeBlock(lH, dH) {
-    while (true) {
-      const sym = decode(lH, 'lit');
-      if (sym < 256) {
-        out[op++] = sym;
-      } else if (sym === 256) {
-        break;
+      } else if (t === 'inlinestr') {
+        const tList = cell.getElementsByTagName('t');
+        for (let k = 0; k < tList.length; k++) val += (tList.item(k).textContent || '');
       } else {
-        const li = sym - 257;
-        const length = LB[li] + bits.readBits(LEB[li]);
-        const ds = decode(dH, 'dist');
-        const distance = DB[ds] + bits.readBits(DEB[ds]);
-        let sp = op - distance;
-        for (let j = 0; j < length; j++) {
-          out[op++] = out[sp++];
-        }
+        // 默认：数字或字符串直接放 <v>
+        const v = cell.getElementsByTagName('v').item(0);
+        if (v) val = v.textContent || '';
+      }
+      while (rowArr.length <= colIdx) rowArr.push('');
+      rowArr[colIdx] = val;
+    }
+    result.push(rowArr);
+  }
+  return result;
+}
+
+// 二维行 → 账单对象（按表头关键字定位列，与 CSV 解析同构）
+function convertWechatXLSXRows(rows, fileName) {
+  if (!rows || rows.length < 2) return [];
+
+  // 定位表头行（含已知列关键字优先；否则第一个非空行）
+  let headerIdx = -1;
+  for (let r = 0; r < rows.length; r++) {
+    const low = (rows[r] || []).join('|').toLowerCase();
+    if (low.includes('交易时间') || low.includes('记账时间') || low.includes('金额') ||
+        low.includes('日期') || low.includes('收/支') || low.includes('交易对方') || low.includes('商品')) {
+      headerIdx = r; break;
+    }
+  }
+  if (headerIdx < 0) {
+    for (let r = 0; r < rows.length; r++) if ((rows[r] || []).some(c => (c || '').trim())) { headerIdx = r; break; }
+  }
+  if (headerIdx < 0 || headerIdx + 1 >= rows.length) return [];
+
+  const header = rows[headerIdx].map(h => (h || '').trim());
+  const fullLow = header.join('|').toLowerCase();
+
+  let source = 'xlsx';
+  const fname = (fileName || '').toLowerCase();
+  if (fname.includes('微信') || fname.includes('wechat') || fullLow.includes('微信') || fullLow.includes('微信支付')) source = 'wechat';
+  else if (fname.includes('支付宝') || fname.includes('alipay') || fullLow.includes('支付宝')) source = 'alipay';
+  else if (fname.includes('淘宝') || fname.includes('tmall') || fname.includes('天猫') || fname.includes('京东') || fname.includes('jd') ||
+           fname.includes('拼多多') || fname.includes('pdd') || fullLow.includes('淘宝') || fullLow.includes('天猫') ||
+           fullLow.includes('京东') || fullLow.includes('拼多多') || fullLow.includes('订单编号') ||
+           fullLow.includes('商户订单号') || fullLow.includes('店铺')) source = 'shopping';
+
+  const col = (...cands) => {
+    for (const c of cands) {
+      const i = header.findIndex(h => h && h.replace(/\s/g, '').toLowerCase().includes(c.toLowerCase()));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iDate  = col('交易时间', '记账时间', '记账日期', '日期', '时间');
+  const iType  = col('交易类型', '收支类型', '资金流向');
+  const iDir   = col('收/支', '收付款方式', '收/付款方式', '收付方向');
+  const iParty = col('交易对方', '对方', '商户', '商家', '付款方', '收款方', '支付方');
+  const iGoods = col('商品', '交易说明', '说明', '备注', '摘要', '交易备注');
+  const iAmt   = col('金额', '交易金额', '收/支金额', '收支金额', '实付金额', '实际支付');
+
+  const bills = [];
+  for (let r = headerIdx + 1; r < rows.length; r++) {
+    const cells = rows[r];
+    if (!cells || cells.every(c => !(c || '').trim())) continue;
+
+    let date = '', time = '';
+    const rawDT = (cells[iDate] || '').trim().replace(/\//g, '-');
+    if (rawDT) {
+      const sp = rawDT.split(/[\sT]+/);
+      date = (sp[0] || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        const m = date.match(/(\d{4})年(\d{1,2})月(\d{1,2})/);
+        if (m) date = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+      }
+      time = (sp[1] || '').slice(0, 8);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+    const summary = (cells[iGoods] || cells[iParty] || '').trim() || '未知';
+    const amtStr = (cells[iAmt] || '').replace(/[^0-9.\-]/g, '');
+    let amount = parseFloat(amtStr) || 0;
+    if (amount <= 0) continue;
+    amount = Math.abs(amount);
+
+    let type = 'expense';
+    const typeCell = (cells[iType] || '').toLowerCase();
+    const dirCell = (cells[iDir] || '').toLowerCase();
+    if (typeCell.includes('收入') || typeCell.includes('退款') || typeCell.includes('转入') || dirCell.includes('收入')) type = 'income';
+    else if (source === 'alipay' && (cells[iAmt] || '').includes('-')) type = 'income';
+
+    const category = bkAutoClassify(summary, type);
+    bills.push({ id: genId(), date, summary, type, category, amount, note: '', source, time, groupId: '', dedup: '', linkedDrop: false, checked: true, status: 'imported' });
+  }
+  return bills;
+}
+
+// ========== 内置纯 JS DEFLATE 解压器（TINF 算法，零依赖，已验证可靠）==========
+// 替换原手写实现，完整支持 stored / fixed / dynamic 三种块，兼容 xlsx 内的 raw deflate 流
+function bkInflateTINF(compressed, expectedSize) {
+  const TINF_OK = 0, TINF_DATA_ERROR = -3;
+
+  function Tree() {
+    this.table = new Uint16Array(16);
+    this.trans = new Uint16Array(288);
+  }
+  function Data(source, dest) {
+    this.source = source; this.sourceIndex = 0; this.tag = 0; this.bitcount = 0;
+    this.dest = dest; this.destLen = 0;
+    this.ltree = new Tree(); this.dtree = new Tree();
+  }
+
+  const sltree = new Tree(), sdtree = new Tree();
+  const length_bits = new Uint8Array(30), length_base = new Uint16Array(30);
+  const dist_bits = new Uint8Array(30), dist_base = new Uint16Array(30);
+  const clcidx = new Uint8Array([16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15]);
+  const code_tree = new Tree(), lengths = new Uint8Array(288 + 32);
+  const offs = new Uint16Array(16);
+
+  function tinf_build_bits_base(bits, base, delta, first) {
+    let i, sum;
+    for (i = 0; i < delta; ++i) bits[i] = 0;
+    for (i = 0; i < 30 - delta; ++i) bits[i + delta] = (i / delta) | 0;
+    for (sum = first, i = 0; i < 30; ++i) { base[i] = sum; sum += 1 << bits[i]; }
+  }
+  function tinf_build_fixed_trees(lt, dt) {
+    let i;
+    for (i = 0; i < 7; ++i) lt.table[i] = 0;
+    lt.table[7] = 24; lt.table[8] = 152; lt.table[9] = 112;
+    for (i = 0; i < 24; ++i) lt.trans[i] = 256 + i;
+    for (i = 0; i < 144; ++i) lt.trans[24 + i] = i;
+    for (i = 0; i < 8; ++i) lt.trans[24 + 144 + i] = 280 + i;
+    for (i = 0; i < 112; ++i) lt.trans[24 + 144 + 8 + i] = 144 + i;
+    for (i = 0; i < 5; ++i) dt.table[i] = 0;
+    dt.table[5] = 32;
+    for (i = 0; i < 32; ++i) dt.trans[i] = i;
+  }
+  function tinf_build_tree(t, lengths, off, num) {
+    let i, sum;
+    for (i = 0; i < 16; ++i) t.table[i] = 0;
+    for (i = 0; i < num; ++i) t.table[lengths[off + i]]++;
+    t.table[0] = 0;
+    for (sum = 0, i = 0; i < 16; ++i) { offs[i] = sum; sum += t.table[i]; }
+    for (i = 0; i < num; ++i) if (lengths[off + i]) t.trans[offs[lengths[off + i]]++] = i;
+  }
+  function tinf_getbit(d) {
+    if (!d.bitcount--) { d.tag = d.source[d.sourceIndex++]; d.bitcount = 7; }
+    const bit = d.tag & 1; d.tag >>>= 1; return bit;
+  }
+  function tinf_read_bits(d, num, base) {
+    if (!num) return base;
+    while (d.bitcount < 24) { d.tag |= d.source[d.sourceIndex++] << d.bitcount; d.bitcount += 8; }
+    const val = d.tag & (0xffff >>> (16 - num)); d.tag >>>= num; d.bitcount -= num; return val + base;
+  }
+  function tinf_decode_symbol(d, t) {
+    while (d.bitcount < 24) { d.tag |= d.source[d.sourceIndex++] << d.bitcount; d.bitcount += 8; }
+    let sum = 0, cur = 0, len = 0, tag = d.tag;
+    do { cur = 2 * cur + (tag & 1); tag >>>= 1; ++len; sum += t.table[len]; cur -= t.table[len]; } while (cur >= 0);
+    d.tag = tag; d.bitcount -= len;
+    return t.trans[sum + cur];
+  }
+  function tinf_decode_trees(d, lt, dt) {
+    const hlit = tinf_read_bits(d, 5, 257);
+    const hdist = tinf_read_bits(d, 5, 1);
+    const hclen = tinf_read_bits(d, 4, 4);
+    let i, num, length, sym;
+    for (i = 0; i < 19; ++i) lengths[i] = 0;
+    for (i = 0; i < hclen; ++i) lengths[clcidx[i]] = tinf_read_bits(d, 3, 0);
+    tinf_build_tree(code_tree, lengths, 0, 19);
+    for (num = 0; num < hlit + hdist;) {
+      sym = tinf_decode_symbol(d, code_tree);
+      if (sym === 16) {
+        const prev = lengths[num - 1];
+        for (length = tinf_read_bits(d, 2, 3); length; --length) lengths[num++] = prev;
+      } else if (sym === 17) {
+        for (length = tinf_read_bits(d, 3, 3); length; --length) lengths[num++] = 0;
+      } else if (sym === 18) {
+        for (length = tinf_read_bits(d, 7, 11); length; --length) lengths[num++] = 0;
+      } else {
+        lengths[num++] = sym;
+      }
+    }
+    tinf_build_tree(lt, lengths, 0, hlit);
+    tinf_build_tree(dt, lengths, hlit, hdist);
+  }
+  function tinf_inflate_block_data(d, lt, dt) {
+    for (;;) {
+      const sym = tinf_decode_symbol(d, lt);
+      if (sym === 256) return TINF_OK;
+      if (sym < 256) { d.dest[d.destLen++] = sym; }
+      else {
+        let length, dist, off, i;
+        const s = sym - 257;
+        length = tinf_read_bits(d, length_bits[s], length_base[s]);
+        dist = tinf_decode_symbol(d, dt);
+        off = d.destLen - tinf_read_bits(d, dist_bits[dist], dist_base[dist]);
+        for (i = off; i < off + length; ++i) d.dest[d.destLen++] = d.dest[i];
       }
     }
   }
+  function tinf_inflate_uncompressed_block(d) {
+    let length, invlength, i;
+    while (d.bitcount > 8) { d.sourceIndex--; d.bitcount -= 8; }
+    length = d.source[d.sourceIndex + 1]; length = 256 * length + d.source[d.sourceIndex];
+    invlength = d.source[d.sourceIndex + 3]; invlength = 256 * invlength + d.source[d.sourceIndex + 2];
+    if (length !== (~invlength & 0x0000ffff)) return TINF_DATA_ERROR;
+    d.sourceIndex += 4;
+    for (i = length; i; --i) d.dest[d.destLen++] = d.source[d.sourceIndex++];
+    d.bitcount = 0;
+    return TINF_OK;
+  }
+  function tinf_uncompress(source, dest) {
+    const d = new Data(source, dest);
+    let bfinal, btype, res;
+    do {
+      bfinal = tinf_getbit(d);
+      btype = tinf_read_bits(d, 2, 0);
+      if (btype === 0) res = tinf_inflate_uncompressed_block(d);
+      else if (btype === 1) res = tinf_inflate_block_data(d, sltree, sdtree);
+      else if (btype === 2) { tinf_decode_trees(d, d.ltree, d.dtree); res = tinf_inflate_block_data(d, d.ltree, d.dtree); }
+      else res = TINF_DATA_ERROR;
+      if (res !== TINF_OK) throw new Error('DEFLATE 数据错误');
+    } while (!bfinal);
+    if (d.destLen < d.dest.length && typeof d.dest.slice === 'function') return d.dest.slice(0, d.destLen);
+    return d.dest;
+  }
 
-  return out.subarray(0, op);
+  // 初始化固定树与基础表（函数内闭包，仅一次）
+  tinf_build_fixed_trees(sltree, sdtree);
+  tinf_build_bits_base(length_bits, length_base, 4, 3);
+  tinf_build_bits_base(dist_bits, dist_base, 2, 1);
+  length_bits[28] = 0; length_base[28] = 258;
+
+  const destSize = Math.max(expectedSize || 0, compressed.length * 16 + 4096, 1024);
+  const dest = new Uint8Array(destSize);
+  return tinf_uncompress(compressed, dest);
 }
 
 // --- ZIP 解压（使用内置 DEFLATE）---
@@ -4467,7 +4483,7 @@ function parseZIP(data) {
       entries[ent.name] = copy;
     } else if (ent.compression === 8) {
       try {
-        entries[ent.name] = fullInflate(copy, ent.uncompSize);
+        entries[ent.name] = bkInflateTINF(copy, ent.uncompSize);
       } catch (e) {
         console.warn('DEFLATE 解压失败:', ent.name, e.message);
       }
