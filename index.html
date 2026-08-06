@@ -4002,11 +4002,45 @@ async function bkParseCSVFile(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = function(e) {
-      const text = e.target.result;
+      // 支付宝/淘宝 CSV 常为 GBK 编码，浏览器默认 UTF-8 会乱码
+      // 先用 UTF-8 解码；若找不到中文表头关键字，回退到 GBK 重试
+      const buf = e.target.result;
+      let text = '';
+      const decoders = ['utf-8', 'gbk', 'gb2312', 'gb18030'];
+      for (const enc of decoders) {
+        try { text = new TextDecoder(enc).decode(buf); } catch(_) { continue; }
+        // 快速检查：解码结果是否包含预期的中文表头关键字
+        if (/交易时间|记账时间|金额|收\/支|交易对方|日期/.test(text)) break;
+        text = ''; // 这个编码不对，清空试下一个
+      }
+      if (!text) { resolve([]); return; } // 所有编码都失败
+
       const records = bkSplitCSVRecords(text);
       if (records.length < 2) { resolve([]); return; }
 
-      const header = records[0].map(h => (h || '').trim());
+      // 智能定位表头行（跳过元数据/注释行；支付宝/微信 CSV 前面常有几十行说明）
+      // 用加权打分：真正的表头行含多个列名关键字（得分高），元数据行顶多撞上 1-2 个（得分低）
+      let headerIdx = -1, bestScore = 0;
+      for (let r = 0; r < records.length; r++) {
+        const low = (records[r] || []).join('|').toLowerCase();
+        let s = 0;
+        if (low.includes('交易时间')) s += 3;
+        if (low.includes('金额')) s += 2;
+        if (low.includes('收/支')) s += 2;
+        if (low.includes('交易对方')) s += 2;
+        if (low.includes('交易分类') || low.includes('交易类型')) s += 2;
+        if (low.includes('商品') || low.includes('商品说明')) s += 1;
+        if (s > bestScore) { bestScore = s; headerIdx = r; }
+      }
+      // 阈值：至少 5 分才认作表头（避免元数据行误判）
+      if (bestScore < 5) headerIdx = -1;
+      // 兜底：如果关键字搜索也没找到，用第一个非空行
+      if (headerIdx >= records.length) {
+        for (let r = 0; r < records.length; r++) if ((records[r] || []).some(c => (c || '').trim())) { headerIdx = r; break; }
+      }
+      if (headerIdx + 1 >= records.length) { resolve([]); return; }
+
+      const header = records[headerIdx].map(h => (h || '').trim());
       const fullLow = header.join('|').toLowerCase();
 
       // 识别来源平台（决定后续支付穿透匹配）：优先看文件名，其次看表头
@@ -4026,14 +4060,14 @@ async function bkParseCSVFile(file) {
         return -1;
       };
       const iDate  = col('交易时间','记账时间','记账日期','日期','时间');
-      const iType  = col('交易类型','收支类型','资金流向');
+      const iType  = col('交易类型','交易分类','收支类型','资金流向');
       const iDir   = col('收/支','收付款方式','收/付款方式','收付方向');
       const iParty = col('交易对方','对方','商户','商家','付款方','收款方','支付方');
-      const iGoods = col('商品','交易说明','说明','备注','摘要','交易备注');
+      const iGoods = col('商品','商品说明','交易说明','说明','备注','摘要','交易备注');
       const iAmt   = col('金额','交易金额','收/支金额','收支金额','实付金额','实际支付');
 
       const bills = [];
-      for (let r = 1; r < records.length; r++) {
+      for (let r = headerIdx + 1; r < records.length; r++) {
         const cells = records[r];
         if (cells.every(c => !(c||'').trim())) continue;
 
@@ -4068,7 +4102,7 @@ async function bkParseCSVFile(file) {
       }
       resolve(bills);
     };
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsArrayBuffer(file);
   });
 }
 
