@@ -4206,29 +4206,30 @@ function parseInvoiceData(invData, fileName) {
 
 /**
  * 从文本解析发票（fallback，无结构化数据时）
+ * 中国电子发票关键字段：货物或应税劳务名称 / 项目名称 / 价税合计(小写) / 开票日期
  */
 function parseInvoiceFromText(textDets, fullText, fileName) {
   var bills = [];
-  // 清理 OCR 噪声：去除多余空格、合并断行
+  // 清理 OCR 噪声
   var text = fullText.replace(/\s+/g, ' ').replace(/(\d) (\d)/g, '$1$2');
 
-  // 价税合计（多种 OCR 变体）
+  // ===== 1. 提取金额 =====
+  // 价税合计(小写) 是最准确的金额字段
   var amtMatch = text.match(/价税合计[（(][^）)]*[）)]\s*[：:]*\s*¥?(\d+\.?\d*)/) ||
                  text.match(/价税合计[（(]\s*小写\s*[）)]\s*[：:]*\s*¥?(\d+\.?\d*)/) ||
-                 text.match(/价税合计\s*[：:]\s*¥?(\d+\.?\d*)/) ||
-                 text.match(/合计\s*[：:]\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/价税合计\s*[（(]\s*\d+[）)]/) ||  // "价税合计(97)" 这种格式
+                 text.match(/价税合计\s*[：:]\s*[（(]?\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/[合总]计\s*[（(][^）)]*[）)]\s*[：:]*\s*¥?(\d+\.?\d*)/) ||
                  text.match(/¥\s*(\d+\.?\d*)/);
   var amount = amtMatch ? parseFloat(amtMatch[1]) : 0;
 
-  // 开票日期
+  // ===== 2. 提取日期 =====
   var dateMatch = text.match(/开票日期[：:\s]*(\d{4}[^\n\r]{0,20})/) ||
                   text.match(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/);
   var dateStr = dateMatch ? dateMatch[1].replace(/年|月/g, '-').replace(/日/g, '').substring(0, 10) : formatDateISO(new Date());
 
-  // 项目名称 / 货物名称
-  var itemMatch = text.match(/(?:项目|货物|服务)[名称：:\s]*([^\n\r￥¥0-9]+)/i) ||
-                  text.match(/名称[：:\s]*([^\n\r￥¥0-9]+)/i);
-  var summary = itemMatch ? itemMatch[1].trim().substring(0, 50).replace(/\s+/g, ' ') : '发票支出';
+  // ===== 3. 提取项目名称（核心改进）=====
+  var summary = extractInvoiceItemName(text);
 
   if (amount > 0) {
     bills.push({
@@ -4250,6 +4251,70 @@ function parseInvoiceFromText(textDets, fullText, fileName) {
   }
 
   return bills;
+}
+
+/**
+ * 从发票 OCR 文本中提取项目/货物名称
+ * 电子发票常见格式：
+ *   货物或应税劳务、服务名称    xxx
+ *   项目名称                  xxx
+ *   商品名称                  xxx
+ * 或 OCR 识别后变成：
+ *   货物或应税劳务名称 xxx
+ *   项目名称 xxx
+ *
+ * 策略：按优先级尝试多种模式，取最合理的结果
+ */
+function extractInvoiceItemName(text) {
+  // 模式1：标准电子发票 - "货物或应税劳务、服务名称" 后面跟内容
+  var m = text.match(/货物或应税劳务[、,]?服务名称\s*[：:]*\s*(.+?)(?:\s*(?:规格型号|单位|数量|单价|金额|税率|税额|合计|价税|¥|$))/i);
+  if (m && m[1]) return cleanInvoiceSummary(m[1]);
+
+  // 模式2："货物或应税劳务名称"
+  m = text.match(/货物或应税劳务名称\s*[：:]*\s*(.+?)(?:\s*(?:规格型号|单位|数量|单价|金额|税率|税额|合计|价税|¥|$))/i);
+  if (m && m[1]) return cleanInvoiceSummary(m[1]);
+
+  // 模式3："项目名称"
+  m = text.match(/项目名称\s*[：:]*\s*(.+?)(?:\s*(?:规格型号|单位|数量|单价|金额|税率|税额|合计|价税|¥|$))/i);
+  if (m && m[1]) return cleanInvoiceSummary(m[1]);
+
+  // 模式4："商品名称"
+  m = text.match(/商品名称\s*[：:]*\s*(.+?)(?:\s*(?:规格型号|单位|数量|单价|金额|税率|税额|合计|价税|¥|$))/i);
+  if (m && m[1]) return cleanInvoiceSummary(m[1]);
+
+  // 模式5：宽松匹配 - "xxx名称" 后面的内容
+  m = text.match(/(?:项目|货物|商品|服务)[名称]*\s*[：:]*\s*(.{2,40}?)(?:\s*(?:规格|单位|数量|单价|金额|税率|税额|合计|价税|¥|\d+\.\d{2}))/i);
+  if (m && m[1]) return cleanInvoiceSummary(m[1]);
+
+  // 模式6：OCR 可能完全打乱表格结构，尝试找"名称"附近的有意义文本
+  m = text.match(/名称\s*[：:]?\s*([^\d￥¥()（）]{2,30})/i);
+  if (m && m[1]) return cleanInvoiceSummary(m[1]);
+
+  // 模式7：最后兜底 - 找不含金额/日期关键词的最长有意义的短句
+  var lines = text.split(/\s+/).filter(function(w) { return w.length >= 2; });
+  for (var i = 0; i < lines.length; i++) {
+    var word = lines[i].trim();
+    // 跳过明显不是物品名的词
+    if (/^(价税|合计|开票|日期|号码|代码|名称|规格|单位|数量|单价|金额|税率|税额|收款人|复核人|销方|购方|纳税人|地址电话|开户行|币制|发票|备注|第|共|张|机器编号|校验码)$/.test(word)) continue;
+    if (/^[\d￥¥()（）]+$/.test(word)) continue;
+    if (word.length >= 2 && word.length <= 40) return cleanInvoiceSummary(word);
+  }
+
+  return '发票支出';
+}
+
+/**
+ * 清理发票摘要文本（去除 OCR 噪声）
+ */
+function cleanInvoiceSummary(raw) {
+  if (!raw) return '发票支出';
+  return raw.trim()
+    .replace(/^\s*[：:：]+/, '')       // 去掉开头的冒号
+    .replace(/\s*[：:：]\s*$/, '')     // 去掉结尾的冒号
+    .replace(/[\*★#]+/g, '')           // 去掉特殊符号
+    .replace(/\s{2,}/g, ' ')          // 合并多余空格
+    .substring(0, 50)
+    .trim() || '发票支出';
 }
 
 /**
@@ -4377,21 +4442,30 @@ function parseGenericReceipt(textDets, fullText, fileName) {
   var dateStr = dateMatch ? (dateMatch[1] + '-' + String(dateMatch[2]).padStart(2,'0') + '-' + String(dateMatch[3]).padStart(2,'0')) : formatDateISO(new Date());
 
   if (amount > 0) {
-    // 尝试提取有意义的摘要（取包含金额的那一行或最长的非空行）
+    // 尝试提取有意义的摘要（避开"合计/价税合计"等统计行）
     var lines = text.split(/\r?\n/).filter(function(l) { return l.trim().length > 3; });
     var summary = 'OCR识别';
     if (lines.length > 0) {
-      // 优先选包含金额数字的行
+      // 优先选包含金额数字的行（但跳过合计/总计/价税等统计行）
       for (var li = 0; li < lines.length; li++) {
-        if (lines[li].indexOf(String(amount)) >= 0 || lines[li].indexOf(amountMatch[0]) >= 0) {
-          summary = lines[li].trim().substring(0, 50).replace(/[¥\d.\s]+$/, '').replace(/\s+/g, ' ');
+        var line = lines[li].trim();
+        if ((line.indexOf(String(amount)) >= 0 || line.indexOf(amountMatch[0]) >= 0) &&
+            !/^(合计|总计|价税|小计|金额|实付|实收)/.test(line)) {
+          summary = line.substring(0, 50).replace(/[¥\d.\s]+$/, '').replace(/\s+/g, ' ');
           break;
         }
       }
-      // 如果没找到含金额的行，用最长行
-      if (summary === 'OCR识别' && lines.length > 0) {
-        var longest = lines.reduce(function(a, b) { return a.length > b.length ? a : b; });
-        summary = longest.trim().substring(0, 50).replace(/\s+/g, ' ');
+      // 如果含金额的行都是统计行，用最长非统计行
+      if (summary === 'OCR识别' || /^(合计|总计|价税)/.test(summary)) {
+        var bestLine = '';
+        for (var lj = 0; lj < lines.length; lj++) {
+          var cand = lines[lj].trim();
+          // 跳过统计行、纯数字行、字段标签行
+          if (/^(合计|总计|价税|小计|金额|实付|实收|开票|日期|编号|代码|名称$|规格|单位|数量|单价|税率|税额|收款|复核|销方|购方|纳税人|地址|开户)/.test(cand)) continue;
+          if (/^[\d￥¥()（）\-]+$/.test(cand)) continue;
+          if (cand.length > bestLine.length) bestLine = cand;
+        }
+        if (bestLine) summary = bestLine.substring(0, 50).replace(/\s+/g, ' ');
       }
     }
 
