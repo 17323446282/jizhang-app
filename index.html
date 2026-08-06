@@ -645,10 +645,51 @@ body {
 .bk-stat-warn { background: linear-gradient(135deg, #FFF3E0, #FFF8E1); border-color: #FFCC80; }
 .bk-stat-warn .bk-stat-val { color: #EF6C00; }
 
-/* Three input cards side by side */
+/* Three input cards side by side (now 2 cols in main + sidebar) */
+.bk-layout-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 16px;
+  align-items: start;
+}
+.bk-main-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+.bk-sidebar {
+  position: sticky;
+  top: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.bk-sidebar-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  box-shadow: var(--shadow-card);
+}
+.bk-sidebar-close {
+  margin-left: auto;
+  font-size: 16px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.bk-sidebar-close:hover { background: var(--color-primary-bg); color: var(--color-primary); }
+.bk-sidebar-dropzone { min-height: 160px; }
+.bk-sidebar-collapsed { display: none; }
+
 .bk-input-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -902,6 +943,8 @@ body {
   .bk-stats-bar { grid-template-columns: repeat(3, 1fr); }
   .bk-stats-bar .bk-stat-card:nth-child(4),
   .bk-stats-bar .bk-stat-card:nth-child(5) { grid-column: span 1; }
+  .bk-layout-grid { grid-template-columns: 1fr; }
+  .bk-sidebar { position: static; }
   .bk-input-row { grid-template-columns: 1fr; }
   .bk-action-bar { flex-wrap: wrap; }
   .bk-btn-primary, .bk-btn-secondary { flex: 1; min-width: 120px; }
@@ -1734,200 +1777,216 @@ input[type="number"] { -moz-appearance: textfield; }
       <div class="bk-stat-card bk-stat-warn"><div class="bk-stat-label">待审核</div><div class="bk-stat-val" id="statPending">0</div></div>
     </div>
 
-    <!-- ===== 三栏输入卡片 ===== -->
-    <div class="bk-input-row" id="bkInputRow">
+    <!-- ===== 主内容 + 右侧边栏 ===== -->
+    <div class="bk-layout-grid">
 
-      <!-- 卡片1：账单文字 -->
-      <div class="bk-input-card">
-        <div class="bk-card-header">
-          <span class="bk-card-icon">📝</span>
-          <span class="bk-card-title">账单文字</span>
-          <span class="bk-card-badge" id="textBadge">0条</span>
-        </div>
-        <div class="bk-card-actions">
-          <button class="bk-act-btn" onclick="bkAddPhotoToText()" title="添加照片作为参考">+添加照片</button>
-          <button class="bk-act-btn" onclick="bkClearText()">清空</button>
-        </div>
-        <div class="bk-text-area-wrap">
-          <textarea id="bkTextInput" class="bk-textarea" placeholder="在此粘贴或输入文字...&#10;&#10;支持格式示例：&#10;2026年8月12日 宝宝奶粉 ¥398 支出&#10;昨天 工资到账 ¥8000 收入&#10;8月3日 交房租 ¥2000 住房房租" oninput="bkOnTextInput()"></textarea>
-          <div class="bk-text-hint" id="bkTextHint">粘贴一段包含日期、金额、摘要的文字，系统将自动识别解析为结构化账单</div>
-        </div>
-      </div>
+      <!-- ===== 左侧主内容区 ===== -->
+      <div class="bk-main-col">
 
-      <!-- 卡片2：截图图片 -->
-      <div class="bk-input-card">
-        <div class="bk-card-header">
-          <span class="bk-card-icon">📷</span>
-          <span class="bk-card-title">截图图片</span>
-          <span class="bk-card-badge" id="imgBadge">0张</span>
-        </div>
-        <div class="bk-card-actions">
-          <button class="bk-act-btn" onclick="document.getElementById('bkImgInput').click()">+添加图片</button>
-          <button class="bk-act-btn" onclick="bkClearImages()">清空</button>
-        </div>
-        <div class="bk-dropzone" id="bkImgDropzone" onclick="document.getElementById('bkImgInput').click()">
-          <div class="bk-dropzone-icon">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M5 17l4.5-4.5L13 16l3-3 3 3"/></svg>
+        <!-- 三栏输入卡片（文字 + 图片 + 文件预览入口） -->
+        <div class="bk-input-row" id="bkInputRow">
+
+          <!-- 卡片1：账单文字 -->
+          <div class="bk-input-card">
+            <div class="bk-card-header">
+              <span class="bk-card-icon">📝</span>
+              <span class="bk-card-title">账单文字</span>
+              <span class="bk-card-badge" id="textBadge">0条</span>
+            </div>
+            <div class="bk-card-actions">
+              <button class="bk-act-btn" onclick="bkAddPhotoToText()" title="添加照片作为参考">+添加照片</button>
+              <button class="bk-act-btn" onclick="bkClearText()">清空</button>
+            </div>
+            <div class="bk-text-area-wrap">
+              <textarea id="bkTextInput" class="bk-textarea" placeholder="在此粘贴或输入文字...&#10;&#10;支持格式示例：&#10;2026年8月12日 宝宝奶粉 ¥398 支出&#10;昨天 工资到账 ¥8000 收入&#10;8月3日 交房租 ¥2000 住房房租" oninput="bkOnTextInput()"></textarea>
+              <div class="bk-text-hint" id="bkTextHint">粘贴一段包含日期、金额、摘要的文字，系统将自动识别解析为结构化账单</div>
+            </div>
           </div>
-          <p class="bk-dropzone-text">请添加图片或<br>拖拽图片至此处</p>
-          <p class="bk-dropzone-hint">支持 JPG / PNG / HEIC 拖拽输入</p>
-          <input type="file" id="bkImgInput" accept="image/*" multiple hidden onchange="bkHandleImages(this.files)">
-        </div>
-        <div class="bk-img-thumbs" id="bkImgThumbs"></div>
-      </div>
 
-      <!-- 卡片3：账单文件 -->
-      <div class="bk-input-card">
-        <div class="bk-card-header">
-          <span class="bk-card-icon">📄</span>
-          <span class="bk-card-title">账单文件</span>
-          <span class="bk-card-badge" id="fileBadge">0个</span>
-        </div>
-        <div class="bk-card-actions">
-          <button class="bk-act-btn" onclick="document.getElementById('bkFileInput').click()">+添加文件</button>
-          <button class="bk-act-btn" onclick="bkClearFiles()">清空</button>
-        </div>
-        <div class="bk-dropzone" id="bkFileDropzone" onclick="document.getElementById('bkFileInput').click()">
-          <div class="bk-dropzone-icon">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M9 4v4h6"/></svg>
+          <!-- 卡片2：截图图片 -->
+          <div class="bk-input-card">
+            <div class="bk-card-header">
+              <span class="bk-card-icon">📷</span>
+              <span class="bk-card-title">截图图片</span>
+              <span class="bk-card-badge" id="imgBadge">0张</span>
+            </div>
+            <div class="bk-card-actions">
+              <button class="bk-act-btn" onclick="document.getElementById('bkImgInput').click()">+添加图片</button>
+              <button class="bk-act-btn" onclick="bkClearImages()">清空</button>
+            </div>
+            <div class="bk-dropzone" id="bkImgDropzone" onclick="document.getElementById('bkImgInput').click()">
+              <div class="bk-dropzone-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="M5 17l4.5-4.5L13 16l3-3 3 3"/></svg>
+              </div>
+              <p class="bk-dropzone-text">请添加图片或<br>拖拽图片至此处</p>
+              <p class="bk-dropzone-hint">支持 JPG / PNG / HEIC 拖拽输入</p>
+              <input type="file" id="bkImgInput" accept="image/*" multiple hidden onchange="bkHandleImages(this.files)">
+            </div>
+            <div class="bk-img-thumbs" id="bkImgThumbs"></div>
           </div>
-          <p class="bk-dropzone-text">请选择文件或<br>拖拽文件至此处</p>
-          <p class="bk-dropzone-hint">支持 CSV / XLSX 拖拽导入</p>
-          <input type="file" id="bkFileInput" accept=".csv,.xlsx,.xls" multiple hidden onchange="bkHandleFiles(this.files)">
+
+        </div><!-- /bk-input-row -->
+
+        <!-- ===== 操作按钮行 ===== -->
+        <div class="bk-action-bar">
+          <button class="bk-btn-primary" onclick="bkRecognize()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            识别解析
+          </button>
+          <button class="bk-btn-secondary" onclick="bkReRecognize()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+            重新识别
+          </button>
+          <button class="bk-btn-link" onclick="bkSmartDedup()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7h8a4 4 0 010 8H8a4 4 0 010-8z"/><path d="M8 15h6a4 4 0 010-8"/></svg>
+            智能去重
+          </button>
+          <button class="bk-btn-outline" onclick="bkConfirmAll()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            确认录入
+          </button>
         </div>
-        <div class="bk-file-list" id="bkFileList"></div>
-      </div>
 
-    </div><!-- /bk-input-row -->
-
-    <!-- ===== 操作按钮行 ===== -->
-    <div class="bk-action-bar">
-      <button class="bk-btn-primary" onclick="bkRecognize()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        识别解析
-      </button>
-      <button class="bk-btn-secondary" onclick="bkReRecognize()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
-        重新识别
-      </button>
-      <button class="bk-btn-link" onclick="bkSmartDedup()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7h8a4 4 0 010 8H8a4 4 0 010-8z"/><path d="M8 15h6a4 4 0 010-8"/></svg>
-        智能去重
-      </button>
-      <button class="bk-btn-outline" onclick="bkConfirmAll()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        确认录入
-      </button>
-    </div>
-
-    <!-- ===== 最近账单表格 ===== -->
-    <div class="card bk-review-section">
-      <div class="card-title flex-between">
-        <span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          最近账单
-        </span>
-        <span style="font-size:12px;color:var(--text-muted)" id="billCountBadge"></span>
-      </div>
-      <div class="bill-table-wrap">
-        <table class="bill-table" id="billTable">
-          <thead><tr><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>操作</th></tr></thead>
-          <tbody id="billTableBody"></tbody>
-        </table>
-      </div>
-      <div class="empty-state hidden" id="billsEmpty">
-        <svg class="brand-illus" width="96" height="96" viewBox="0 0 120 120" fill="none" style="opacity:.92" aria-hidden="true">
-          <rect x="28" y="42" width="64" height="56" rx="14" fill="#FBEAF0" stroke="var(--color-primary)" stroke-width="3"/>
-          <path d="M28 56 q32 -22 64 0" stroke="var(--color-primary)" stroke-width="3" fill="none" stroke-linecap="round"/>
-          <text x="60" y="86" font-size="30" font-weight="700" fill="var(--color-primary)" text-anchor="middle" font-family="sans-serif">¥</text>
-          <path d="M94 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="#EF9F27"/>
-        </svg>
-        <p>暂无账单记录</p>
-      </div>
-    </div>
-
-    <!-- ===== 分类参考标签区 ===== -->
-    <div class="card bk-category-section">
-      <div class="card-title">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-        分类参考（点击查看详情）
-      </div>
-      <div id="categoryReference"></div>
-    </div>
-
-    <!-- ===== 隐藏：手动录入表单 ===== -->
-    <div class="card hidden" id="addFormCard">
-      <div class="card-title">录入账单</div>
-      <form id="billForm" onsubmit="submitBill(event)">
-        <div class="type-toggle" style="margin-bottom:16px;width:fit-content;">
-          <button type="button" id="btnExpense" class="active-expense" onclick="setBillType('expense')">支出</button>
-          <button type="button" id="btnIncome" onclick="setBillType('income')">收入</button>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">日期 *</label>
-            <input type="date" class="form-input" id="billDate" required>
+        <!-- ===== 识别结果审核面板 ===== -->
+        <div id="recResults" class="hidden">
+          <div class="rec-banner" id="recBanner">
+            <div class="badge"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7h8a4 4 0 010 8H8a4 4 0 010-8z"/><path d="M8 15h6a4 4 0 010-8"/></svg></div>
+            <div class="txt" id="recBannerTxt"></div>
+            <label class="rec-switch"><input type="checkbox" id="recDedupToggle" checked><span class="track"></span><span class="knob"></span></label>
           </div>
-          <div class="form-group">
-            <label class="form-label">金额 (¥) *</label>
-            <input type="number" class="form-input" id="billAmount" step="1" min="0" placeholder="0" required>
+          <div class="card">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+              识别结果（请审核后确认入账）
+            </div>
+            <div class="bill-table-wrap">
+              <table class="bill-table" id="recTbl">
+                <thead><tr><th><input type="checkbox" id="recSelAll" onchange="toggleRecSelectAll()"></th><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>状态</th><th>操作</th></tr></thead>
+                <tbody id="recTblBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card" id="recMergeCard">
+            <div class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l-3 4 3 4m10-8l3 4-3 4M14 4l-4 16"/></svg>
+              智能去重 · 合并记录
+              <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto;">同一笔消费在多个来源出现时，只保留一条主记录</span>
+            </div>
+            <div id="recGroupList"></div>
+          </div>
+          <div class="bk-action-bar" style="margin-top:16px;">
+            <button class="bk-btn-outline" onclick="bkConfirmSelected()">确认选中 (<span id="recSelCount">0</span>)</button>
+            <button class="bk-btn-link" onclick="bkExportRecCSV()">导出 CSV</button>
+            <button class="bk-btn-link" style="color:var(--expense-red)" onclick="bkIgnoreDuplicates()">忽略重复项</button>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">摘要 *（如：买水果、工资到账）</label>
-          <input type="text" class="form-input" id="billSummary" placeholder="消费/收入内容" required>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">类别 *</label>
-            <select class="form-select" id="billCategory" required></select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">备注</label>
-            <input type="text" class="form-input" id="billNote" placeholder="可选">
-          </div>
-        </div>
-        <input type="hidden" id="billType" value="expense">
-        <div style="display:flex;gap:10px;margin-top:8px;">
-          <button type="submit" class="btn btn-primary">保存账单</button>
-          <button type="button" class="btn" onclick="hideAddForm()">取消</button>
-        </div>
-      </form>
-    </div>
 
-    <!-- ===== 隐藏：识别结果审核面板 ===== -->
-    <div id="recResults" class="hidden">
-      <div class="rec-banner" id="recBanner">
-        <div class="badge"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7h8a4 4 0 010 8H8a4 4 0 010-8z"/><path d="M8 15h6a4 4 0 010-8"/></svg></div>
-        <div class="txt" id="recBannerTxt"></div>
-        <label class="rec-switch"><input type="checkbox" id="recDedupToggle" checked><span class="track"></span><span class="knob"></span></label>
-      </div>
-      <div class="card">
-        <div class="card-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-          识别结果（请审核后确认入账）
+        <!-- ===== 最近账单表格 ===== -->
+        <div class="card bk-review-section">
+          <div class="card-title flex-between">
+            <span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              最近账单
+            </span>
+            <span style="font-size:12px;color:var(--text-muted)" id="billCountBadge"></span>
+          </div>
+          <div class="bill-table-wrap">
+            <table class="bill-table" id="billTable">
+              <thead><tr><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>操作</th></tr></thead>
+              <tbody id="billTableBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state hidden" id="billsEmpty">
+            <svg class="brand-illus" width="96" height="96" viewBox="0 0 120 120" fill="none" style="opacity:.92" aria-hidden="true">
+              <rect x="28" y="42" width="64" height="56" rx="14" fill="#FBEAF0" stroke="var(--color-primary)" stroke-width="3"/>
+              <path d="M28 56 q32 -22 64 0" stroke="var(--color-primary)" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <text x="60" y="86" font-size="30" font-weight="700" fill="var(--color-primary)" text-anchor="middle" font-family="sans-serif">¥</text>
+              <path d="M94 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z" fill="#EF9F27"/>
+            </svg>
+            <p>暂无账单记录</p>
+          </div>
         </div>
-        <div class="bill-table-wrap">
-          <table class="bill-table" id="recTbl">
-            <thead><tr><th><input type="checkbox" id="recSelAll" onchange="toggleRecSelectAll()"></th><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>状态</th><th>操作</th></tr></thead>
-            <tbody id="recTblBody"></tbody>
-          </table>
+
+        <!-- ===== 分类参考标签区 ===== -->
+        <div class="card bk-category-section">
+          <div class="card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            分类参考（点击查看详情）
+          </div>
+          <div id="categoryReference"></div>
         </div>
-      </div>
-      <div class="card" id="recMergeCard">
-        <div class="card-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8l-3 4 3 4m10-8l3 4-3 4M14 4l-4 16"/></svg>
-          智能去重 · 合并记录
-          <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto;">同一笔消费在多个来源出现时，只保留一条主记录</span>
+
+        <!-- ===== 隐藏：手动录入表单 ===== -->
+        <div class="card hidden" id="addFormCard">
+          <div class="card-title">录入账单</div>
+          <form id="billForm" onsubmit="submitBill(event)">
+            <div class="type-toggle" style="margin-bottom:16px;width:fit-content;">
+              <button type="button" id="btnExpense" class="active-expense" onclick="setBillType('expense')">支出</button>
+              <button type="button" id="btnIncome" onclick="setBillType('income')">收入</button>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">日期 *</label>
+                <input type="date" class="form-input" id="billDate" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">金额 (¥) *</label>
+                <input type="number" class="form-input" id="billAmount" step="1" min="0" placeholder="0" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">摘要 *（如：买水果、工资到账）</label>
+              <input type="text" class="form-input" id="billSummary" placeholder="消费/收入内容" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">类别 *</label>
+                <select class="form-select" id="billCategory" required></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">备注</label>
+                <input type="text" class="form-input" id="billNote" placeholder="可选">
+              </div>
+            </div>
+            <input type="hidden" id="billType" value="expense">
+            <div style="display:flex;gap:10px;margin-top:8px;">
+              <button type="submit" class="btn btn-primary">保存账单</button>
+              <button type="button" class="btn" onclick="hideAddForm()">取消</button>
+            </div>
+          </form>
         </div>
-        <div id="recGroupList"></div>
-      </div>
-      <div class="bk-action-bar" style="margin-top:16px;">
-        <button class="bk-btn-outline" onclick="bkConfirmSelected()">确认选中 (<span id="recSelCount">0</span>)</button>
-        <button class="bk-btn-link" onclick="bkExportRecCSV()">导出 CSV</button>
-        <button class="bk-btn-link" style="color:var(--expense-red)" onclick="bkIgnoreDuplicates()">忽略重复项</button>
-      </div>
-    </div>
+
+      </div><!-- /bk-main-col -->
+
+      <!-- ===== 右侧边栏 ===== -->
+      <div class="bk-sidebar">
+
+        <!-- 账单文件上传面板 -->
+        <div class="bk-sidebar-card">
+          <div class="bk-card-header">
+            <span class="bk-card-icon">📄</span>
+            <span class="bk-card-title">账单文件</span>
+            <span class="bk-card-badge" id="fileBadge">0个</span>
+            <button class="bk-sidebar-close" onclick="toggleSidebarFile()" title="收起">⊗</button>
+          </div>
+          <div class="bk-card-actions">
+            <button class="bk-act-btn" onclick="document.getElementById('bkFileInput').click()">+添加文件</button>
+            <button class="bk-act-btn" onclick="bkClearFiles()">清空</button>
+          </div>
+          <div class="bk-dropzone bk-sidebar-dropzone" id="bkFileDropzone" onclick="document.getElementById('bkFileInput').click()">
+            <div class="bk-dropzone-icon">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M9 4v4h6"/></svg>
+            </div>
+            <p class="bk-dropzone-text">请选择文件或<br>拖拽文件至此处</p>
+            <p class="bk-dropzone-hint">支持 CSV / XLSX 拖拽导入</p>
+            <input type="file" id="bkFileInput" accept=".csv,.xlsx,.xls" multiple hidden onchange="bkHandleFiles(this.files)">
+          </div>
+          <div class="bk-file-list" id="bkFileList"></div>
+        </div>
+
+      </div><!-- /bk-sidebar -->
+
+    </div><!-- /bk-layout-grid -->
 
   </div><!-- /page-bookkeeping --><!-- ========== PAGE: MONTHLY ========== -->
   <div class="page" id="page-monthly">
@@ -3830,6 +3889,11 @@ function bkClearFiles() {
   document.getElementById('fileBadge').textContent = '0个';
   document.getElementById('statFileCount').textContent = '0';
   document.getElementById('bkFileInput').value = '';
+}
+
+function toggleSidebarFile() {
+  const sidebar = document.querySelector('.bk-sidebar');
+  if (sidebar) sidebar.classList.toggle('bk-sidebar-collapsed');
 }
 
 function bkRenderFileList() {
