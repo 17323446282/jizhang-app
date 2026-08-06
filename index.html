@@ -2533,7 +2533,11 @@ function getRangeForMonthYear(year, month1) {
 }
 
 function getBillsInRange(start, end) {
-  return state.bills.filter(b => b.date >= start && b.date <= end).sort((a,b) => b.date.localeCompare(a.date));
+  // 归一化：无论传入 Date 还是 "YYYY-MM-DD" 字符串，统一转成字符串比较
+  // （自然月模式传入字符串；自定义时间段模式传入 Date 对象，否则字符串>=Date 恒为 false）
+  var s = (start instanceof Date) ? formatDateISO(start) : start;
+  var e = (end instanceof Date) ? formatDateISO(end) : end;
+  return state.bills.filter(b => b.date >= s && b.date <= e).sort((a,b) => b.date.localeCompare(a.date));
 }
 
 function calcNetWorth() {
