@@ -4576,12 +4576,22 @@ async function recognizeImages(images) {
     } catch(err) {
       console.error('图片识别失败:', fileName, err);
       markImageThumb(i, 'error');
-      // 即使某张失败也继续处理其他
+      // 在进度条显示具体错误原因
+      var errMsg = (err && err.message) ? err.message : String(err);
+      if (errMsg.indexOf('未配置') >= 0 || errMsg.indexOf('SecretKey') >= 0) {
+        showOcrProgress('❌ 请先去「设置」页填写 OCR 的 SecretKey！', 100);
+        // 停止后续图片处理
+        break;
+      } else {
+        showOcrProgress('⚠️ 「' + fileName + '」识别失败：' + errMsg.substring(0, 40), (i / total) * 100);
+      }
+      // 即使某张失败也继续处理其他（非配置问题）
     }
   }
 
   showOcrProgress('识别完成，共识别到 ' + allBills.length + ' 条账单', 100);
-  setTimeout(hideOcrProgress, 2000);
+  // 有错误时进度条多停留几秒让用户看清
+  setTimeout(hideOcrProgress, allBills.length > 0 ? 2000 : 5000);
 
   return allBills;
 }
