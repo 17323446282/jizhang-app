@@ -1628,7 +1628,7 @@ input[type="number"] { -moz-appearance: textfield; }
         <circle cx="12" cy="12" r="6.5" fill="#FFFFFF"/>
         <text x="12" y="15.9" font-size="9.5" font-weight="700" fill="var(--color-primary-dark)" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif">¥</text>
       </svg>
-      阿双的记账工作台 <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px">v2026.08.06d</span>
+      阿双的记账工作台 <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px">v2026.08.06e</span>
     </h1>
   </div>
   <ul class="nav-list">
@@ -3899,7 +3899,7 @@ async function bkRecognize() {
   // 2. 解析文件（CSV / XLSX）
   for (const f of _bkState.files) {
     if (f.name.endsWith('.csv')) {
-      bills = bills.concat(bkParseCSVFile(f));
+      bills = bills.concat(await bkParseCSVFile(f));
     } else if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
       const xlsxBills = await bkParseXLSXFile(f);
       bills = bills.concat(xlsxBills);
@@ -4004,7 +4004,7 @@ function bkParseOneLine(line, now) {
 async function bkParseCSVFile(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = async function(e) {
       // 支付宝/淘宝 CSV 常为 GBK 编码，浏览器默认 UTF-8 会乱码
       // 先用 UTF-8 解码；若找不到中文表头关键字，回退到 GBK 重试
       const buf = e.target.result;
