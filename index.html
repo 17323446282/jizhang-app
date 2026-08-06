@@ -241,7 +241,7 @@ body {
 /* ===== Metric Cards Grid ===== */
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 160px)) 1fr;
+  grid-template-columns: repeat(6, 1fr);
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -954,6 +954,21 @@ body {
   gap: 16px;
   min-width: 0;
 }
+.monthly-right > .card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.monthly-right > .card > .card-title {
+  flex-shrink: 0;
+}
+.monthly-right > .card .top-list,
+.monthly-right > .card .bill-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .dist-card {
   background: var(--bg-card);
   border-radius: var(--radius-md);
@@ -1215,6 +1230,7 @@ body {
   text-align: center;
   padding: 40px 20px;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 .empty-state svg { margin-bottom: 12px; opacity: 0.4; }
 .empty-state p { font-size: 14px; }
@@ -2026,7 +2042,7 @@ input[type="number"] { -moz-appearance: textfield; }
         <div class="card">
           <div class="card-title">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E24B4A" stroke-width="2" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
-            本月大额支出 Top 10
+            本月大额支出 Top 20
           </div>
           <ul class="top-list" id="topExpensesList"></ul>
           <div class="empty-state hidden" id="topExpensesEmpty">
@@ -3422,7 +3438,7 @@ function renderTopExpenses(range) {
     .filter(b => b.type === 'expense')
     .sort((a, b) => (parseFloat(b.amount)||0) - (parseFloat(a.amount)||0))
     .reverse()
-    .slice(0, 10);
+    .slice(0, 20);
 
   const list = document.getElementById('topExpensesList');
   const empty = document.getElementById('topExpensesEmpty');
