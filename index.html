@@ -1625,7 +1625,7 @@ input[type="number"] { -moz-appearance: textfield; }
         <circle cx="12" cy="12" r="6.5" fill="#FFFFFF"/>
         <text x="12" y="15.9" font-size="9.5" font-weight="700" fill="var(--color-primary-dark)" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif">¥</text>
       </svg>
-      阿双的记账工作台 <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px">v2026.08.06b</span>
+      阿双的记账工作台 <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px">v2026.08.06f</span>
     </h1>
   </div>
   <ul class="nav-list">
@@ -3896,7 +3896,26 @@ async function bkRecognize() {
   // 2. 解析文件（CSV / XLSX）
   for (const f of _bkState.files) {
     if (f.name.endsWith('.csv')) {
-      bills = bills.concat(bkParseCSVFile(f));
+      // 先尝试直接解析 CSV
+      const csvBills = await bkParseCSVFile(f);
+      // 判断解析结果是否有效（>1条 且 不是全是垃圾数据）
+      var csvValid = csvBills.length > 1 && !csvBills.every(function(b) { return !b.date || b.amount <= 0; });
+      if (csvValid) {
+        bills = bills.concat(csvBills);
+      } else {
+        // CSV 直接解析失败 → 自动在内存中转为 xlsx 再解析（解决浏览器 GBK 编码不可靠问题）
+        if (window._bkCSVToXLSXFallback) {
+          var xlsxFile = await window._bkCSVToXLSXFallback(f);
+          if (xlsxFile) {
+            const xlsxBills = await bkParseXLSXFile(xlsxFile);
+            bills = bills.concat(xlsxBills.length > 0 ? xlsxBills : csvBills);
+          } else {
+            bills = bills.concat(csvBills); // 转换也失败，用原始结果
+          }
+        } else {
+          bills = bills.concat(csvBills);
+        }
+      }
     } else if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
       const xlsxBills = await bkParseXLSXFile(f);
       bills = bills.concat(xlsxBills);
@@ -4141,6 +4160,189 @@ function bkSplitCSVLine(line) {
   result.push(current);
   return result;
 }
+
+
+// ========== CSV → XLSX 自动转换器（纯 JS，零依赖，用于浏览器 GBK 不可靠时的 fallback）==========
+// 原理：将 CSV 文本解析为记录数组，再打包成 xlsx 格式（ZIP stored 模式，无需 DEFLATE 压缩）
+// 触发条件：CSV 直接解析结果差（≤1条或全是垃圾数据）时自动启用
+
+(function() {
+  // CRC32 查表（用于 ZIP 校验）
+  var _bkCRC32Table = (function() {
+    var t = new Uint32Array(256);
+    for (var i = 0; i < 256; i++) {
+      var c = i;
+      for (var j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c;
+    }
+    return t;
+  })();
+
+  function _bkCRC32(buf) {
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < buf.length; i++) crc = _bkCRC32Table[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // ZIP 打包器（stored 模式，compression=0，不需要 DEFLATE）
+  function _bkBuildZIP(files) {
+    var parts = [];
+    var centralDir = [];
+    var offset = 0;
+    for (var fi = 0; fi < files.length; fi++) {
+      var f = files[fi];
+      var nameBytes = new TextEncoder().encode(f.name);
+      var data = f.data instanceof Uint8Array ? f.data : new TextEncoder().encode(f.data);
+      var crc = _bkCRC32(data);
+      // Local file header (30 bytes + name + data)
+      var lh = new Uint8Array(30 + nameBytes.length + data.length);
+      var lhv = new DataView(lh.buffer);
+      lhv.setUint32(0, 0x04034b50, true);   // signature
+      lhv.setUint16(4, 20, true);              // version needed
+      lhv.setUint16(6, 0, true);               // flags
+      lhv.setUint16(8, 0, true);               // compression = stored
+      lhv.setUint16(10, 0, true);              // mod time
+      lhv.setUint16(12, 0, true);              // mod date
+      lhv.setUint32(14, crc, true);            // crc32
+      lhv.setUint32(18, data.length, true);    // compressed size
+      lhv.setUint32(22, data.length, true);    // uncompressed size
+      lhv.setUint16(26, nameBytes.length, true); // name length
+      lhv.setUint16(28, 0, true);             // extra length
+      lh.set(nameBytes, 30);
+      lh.set(data, 30 + nameBytes.length);
+      parts.push(lh);
+      // Central directory entry (46 bytes + name)
+      var cd = new Uint8Array(46 + nameBytes.length);
+      var cdv = new DataView(cd.buffer);
+      cdv.setUint32(0, 0x02014b50, true);
+      cdv.setUint16(4, 20, true);
+      cdv.setUint16(6, 20, true);             // version made by
+      cdv.setUint16(8, 0, true);               // flags
+      cdv.setUint16(10, 0, true);             // compression
+      cdv.setUint16(12, 0, true);             // mod time
+      cdv.setUint16(14, 0, true);             // mod date
+      cdv.setUint32(16, crc, true);
+      cdv.setUint32(20, data.length, true);
+      cdv.setUint32(24, data.length, true);
+      cdv.setUint16(28, nameBytes.length, true);
+      cdv.setUint16(30, 0, true);
+      cdv.setUint16(32, 0, true);
+      cdv.setUint16(34, 0, true);
+      cdv.setUint16(36, 0, true);
+      cdv.setUint32(38, 0, true);
+      cdv.setUint42(42, offset, true);
+      cd.set(nameBytes, 46);
+      centralDir.push(cd);
+      offset += lh.length;
+    }
+    var cdSize = 0;
+    for (var ci = 0; ci < centralDir.length; ci++) cdSize += centralDir[ci].length;
+    // EOCD (22 bytes)
+    var eocd = new Uint8Array(22);
+    var eocdv = new DataView(eocd.buffer);
+    eocdv.setUint32(0, 0x06054b50, true);
+    eocdv.setUint16(4, 0, true);
+    eocdv.setUint16(6, 0, true);
+    eocdv.setUint16(8, files.length, true);
+    eocdv.setUint16(10, files.length, true);
+    eocdv.setUint32(12, cdSize, true);
+    eocdv.setUint32(16, offset, true);
+    eocdv.setUint16(20, 0, true);
+    // Assemble final ZIP
+    var totalSize = offset + cdSize + 22;
+    var result = new Uint8Array(totalSize);
+    var pos = 0;
+    for (var pi = 0; pi < parts.length; pi++) { result.set(parts[pos], pos); pos += parts[pi].length; }
+    for (var cdi = 0; cdi < centralDir.length; cdi++) { result.set(centralDir[cdi], pos); pos += centralDir[cdi].length; }
+    result.set(eocd, pos);
+    return result;
+  }
+
+  // XML 特殊字符转义
+  function _bkXmlEscape(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // 列号 → Excel 列名 (0→A, 1→B, ..., 26→AA, ...)
+  function _bkColName(idx) {
+    var n = idx, s = '';
+    while (n >= 0) { s = String.fromCharCode(65 + n % 26) + s; n = Math.floor(n / 26) - 1; }
+    return s || 'A';
+  }
+
+  // 核心：CSV 文本 → XLSX 字节数组
+  window._bkCSVToXLSXBytes = function(csvText) {
+    var records = bkSplitCSVRecords(csvText);
+    if (records.length === 0) return null;
+
+    // 智能定位表头（复用已有的打分逻辑）
+    var headerIdx = 0, bestScore = 0;
+    for (var r = 0; r < records.length; r++) {
+      var low = (records[r] || []).join('|').toLowerCase();
+      var s = 0;
+      if (low.includes('交易时间')) s += 3;
+      if (low.includes('金额')) s += 2;
+      if (low.includes('收/支')) s += 2;
+      if (low.includes('交易对方')) s += 2;
+      if (low.includes('交易分类') || low.includes('交易类型')) s += 2;
+      if (low.includes('商品') || low.includes('商品说明')) s += 1;
+      if (s > bestScore) { bestScore = s; headerIdx = r; }
+    }
+    if (bestScore < 5 && records.length > 1) headerIdx = 0;
+
+    var rows = records.slice(headerIdx);
+    // 构建 sheet XML
+    var sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+    for (var ri = 0; ri < rows.length; ri++) {
+      sheetXml += '<row r="' + (ri + 1) + '">';
+      var cells = rows[ri] || [];
+      for (var ci = 0; ci < cells.length; ci++) {
+        var v = (cells[ci] || '').trim();
+        if (!v) continue;
+        sheetXml += '<c r="' + _bkColName(ci) + (ri + 1) + '" t="inlineStr"><is><t>' + _bkXmlEscape(v) + '</t></is></c>';
+      }
+      sheetXml += '</row>';
+    }
+    sheetXml += '</sheetData></worksheet>';
+
+    // 用 stored 模式打包成 ZIP (= xlsx)
+    return _bkBuildZIP([
+      {name:'[Content_Types].xml', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'},
+      {name:'_rels/.rels', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+      {name:'xl/workbook.xml', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>'},
+      {name:'xl/_rels/workbook.xml.rels', data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'},
+      {name:'xl/worksheets/sheet1.xml', data:sheetXml}
+    ]);
+  };
+
+  // 对外接口：读取 CSV File → 转为 XLSX File 对象（供 bkParseXLSXFile 使用）
+  window._bkCSVToXLSXFallback = function(csvFile) {
+    return new Promise(function(resolve) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var buf = e.target.result;
+        // 尝试多种编码解码 CSV
+        var text = '';
+        var decoders = ['utf-8', 'gbk', 'gb2312', 'gb18030'];
+        for (var di = 0; di < decoders.length; di++) {
+          try { text = new TextDecoder(decoders[di]).decode(buf); } catch(err) { continue; }
+          if (/交易时间|记账时间|金额|收\/支|交易对方|日期/.test(text)) break;
+          text = '';
+        }
+        if (!text) { resolve(null); return; }
+
+        var xlsxBytes = window._bkCSVToXLSXBytes(text);
+        if (!xlsxBytes) { resolve(null); return; }
+
+        // 将字节数组转为 File 对象（bkParseXLSXFile 接受 File）
+        var blob = new Blob([xlsxBytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        var xlsxFile = new File([blob], csvFile.name.replace('.csv','.xlsx').replace('.CSV','.XLSX'), {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        resolve(xlsxFile);
+      };
+      reader.readAsArrayBuffer(csvFile);
+    });
+  };
+})();
 
 
 
