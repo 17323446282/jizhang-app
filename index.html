@@ -1219,6 +1219,37 @@ body {
   color: #fff !important;
 }
 
+/* 自选范围生效徽章（独立于月份导航，互不关联） */
+.custom-range-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: #FCEFEF;
+  border: 1px solid var(--color-primary);
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.custom-range-badge.hidden { display: none; }
+.custom-range-badge .badge-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.custom-range-badge .badge-close:hover { opacity: 0.6; }
+
 /* 自选时间范围面板 */
 .custom-range-panel {
   display: flex;
@@ -2052,9 +2083,10 @@ input[type="number"] { -moz-appearance: textfield; }
           <button class="month-nav-btn" onclick="navMonth(1)" aria-label="下个月">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 6 15 12 9 18"/></svg>
           </button>
-          <button class="month-nav-btn month-nav-mode-btn" id="customRangeBtn" onclick="toggleCustomRange()" title="切换到自选时间范围" aria-label="自选时间范围">
+          <button class="month-nav-btn month-nav-mode-btn" id="customRangeBtn" onclick="toggleCustomRange()" title="展开自选时间范围" aria-label="自选时间范围">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           </button>
+          <span class="custom-range-badge hidden" id="customRangeBadge"><span id="customRangeBadgeText"></span><button type="button" class="badge-close" onclick="clearCustomRange()" aria-label="清除自选范围">×</button></span>
         </div>
       </div>
       <!-- 自选时间范围面板（默认隐藏） -->
@@ -3154,15 +3186,16 @@ var customEnd = null;
 function toggleCustomRange(forceState) {
   var panel = document.getElementById('customRangePanel');
   var btn = document.getElementById('customRangeBtn');
+  var willOpen;
   if (typeof forceState === 'boolean') {
-    customRangeMode = forceState;
+    willOpen = forceState;
   } else {
-    customRangeMode = !customRangeMode;
+    willOpen = panel.classList.contains('hidden');
   }
-  if (customRangeMode) {
+  if (willOpen) {
     panel.classList.remove('hidden');
     btn.classList.add('active-mode');
-    // 默认填充当前月份的起止日期
+    // 仅填充输入框方便修改，不自动生效筛选
     if (!customStart) {
       var now = new Date(navYear, navMonthVal - 1, 1);
       var nextM = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -3186,14 +3219,20 @@ function applyCustomRange() {
   customEnd = new Date(eVal + 'T23:59:59');
   if (customEnd < customStart) { alert('结束日期不能早于开始日期'); return; }
   customRangeMode = true;
+  // 关闭面板但保留生效状态（由独立徽章展示）
+  document.getElementById('customRangePanel').classList.add('hidden');
+  document.getElementById('customRangeBtn').classList.remove('active-mode');
   refreshCustomRangeView();
 }
 
 function refreshCustomRangeView() {
-  var txt = document.getElementById('monthNavText');
-  if (txt) {
-    var fmt = function(d) { return d.getFullYear() + '/' + (d.getMonth()+1) + '/' + d.getDate(); };
-    txt.textContent = fmt(customStart) + '-' + fmt(customEnd);
+  // 月份导航文字保持不变（两者独立），仅更新自选生效徽章
+  var fmt = function(d) { return d.getFullYear() + '/' + (d.getMonth()+1) + '/' + d.getDate(); };
+  var badge = document.getElementById('customRangeBadge');
+  var badgeText = document.getElementById('customRangeBadgeText');
+  if (badge && badgeText) {
+    badgeText.textContent = '自选 ' + fmt(customStart) + ' - ' + fmt(customEnd);
+    badge.classList.remove('hidden');
   }
   var range = { start: customStart, end: customEnd, labelYear: customStart.getFullYear(), labelMonth: customStart.getMonth()+1,
                 startDate: customStart, endDate: customEnd };
@@ -3250,7 +3289,24 @@ function renderMonthly() {
   const cyc = getCycleRange();
   navYear = cyc.startDate.getFullYear();
   navMonthVal = cyc.startDate.getMonth() + 1; // 1-based
+  // 进入月度页默认月份视图；保留已填自选值(输入框)但不生效
+  customRangeMode = false;
+  var badge = document.getElementById('customRangeBadge');
+  if (badge) badge.classList.add('hidden');
+  refreshMonthlyView();
+}
 
+function clearCustomRange() {
+  // 清除自选生效：回到月份视图，清空输入框与自选值
+  customRangeMode = false;
+  customStart = null;
+  customEnd = null;
+  var sEl = document.getElementById('customRangeStart');
+  var eEl = document.getElementById('customRangeEnd');
+  if (sEl) sEl.value = '';
+  if (eEl) eEl.value = '';
+  var badge = document.getElementById('customRangeBadge');
+  if (badge) badge.classList.add('hidden');
   refreshMonthlyView();
 }
 
@@ -3258,14 +3314,21 @@ function navMonth(delta) {
   navMonthVal += delta;
   if (navMonthVal > 12) { navMonthVal = 1; navYear++; }
   if (navMonthVal < 1) { navMonthVal = 12; navYear--; }
+  // 回到月份视图：保留自选输入框的值，但取消自选生效标记
+  customRangeMode = false;
+  var badge = document.getElementById('customRangeBadge');
+  if (badge) badge.classList.add('hidden');
   refreshMonthlyView();
 }
 
 function refreshMonthlyView() {
   const range = getRangeForMonthYear(navYear, navMonthVal);
-  // update nav text
+  // 月份导航文字：永远显示自然月（独立，不被自选覆盖）
   const txt = document.getElementById('monthNavText');
   if (txt) txt.textContent = `${navYear}年${String(navMonthVal).padStart(2,'0')}月`;
+  // 非自选视图时隐藏徽章
+  var badge = document.getElementById('customRangeBadge');
+  if (badge && !customRangeMode) badge.classList.add('hidden');
   // title stays fixed "本月收支", no need to change it
   updateMonthlyMetrics(range);
   renderMonthlyCharts(range);
