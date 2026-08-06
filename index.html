@@ -4265,13 +4265,32 @@ function convertWechatXLSXRows(rows, fileName) {
     let date = '', time = '';
     const rawDT = (cells[iDate] || '').trim().replace(/\//g, '-');
     if (rawDT) {
-      const sp = rawDT.split(/[\sT]+/);
-      date = (sp[0] || '').slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        const m = date.match(/(\d{4})年(\d{1,2})月(\d{1,2})/);
-        if (m) date = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+      // 检测 Excel 序列号（纯数字且 > 1000，典型范围 40000–60000 对应 2010–2030 年）
+      const serialNum = parseFloat(rawDT);
+      if (!isNaN(serialNum) && serialNum > 1000 && serialNum < 70000 && !/[^\d.\-]/.test(rawDT)) {
+        // Excel 序列号 → 日期（Excel 以 1899-12-30 为基准，含 Lotus 123 的闰年 bug）
+        const utcMs = Math.round((serialNum - 25569) * 86400000);
+        const d = new Date(utcMs);
+        // 补上北京时区偏移（UTC+8），避免日期差一天
+        const localMs = utcMs + 8 * 3600000;
+        const ld = new Date(localMs);
+        const yy = ld.getUTCFullYear();
+        const mm = String(ld.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(ld.getUTCDate()).padStart(2, '0');
+        date = yy + '-' + mm + '-' + dd;
+        time = String(ld.getUTCHours()).padStart(2, '0') + ':' +
+               String(ld.getUTCMinutes()).padStart(2, '0') + ':' +
+               String(ld.getUTCSeconds()).padStart(2, '0');
+      } else {
+        // 文本日期格式
+        const sp = rawDT.split(/[\sT]+/);
+        date = (sp[0] || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          const m = date.match(/(\d{4})年(\d{1,2})月(\d{1,2})/);
+          if (m) date = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+        }
+        time = (sp[1] || '').slice(0, 8);
       }
-      time = (sp[1] || '').slice(0, 8);
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
 
