@@ -822,6 +822,22 @@ body {
 .bk-file-item .fsize { color: var(--text-muted); font-size: 11px; }
 .bk-file-item .fremove { cursor: pointer; color: var(--expense-red); font-size: 14px; border: none; background: none; }
 
+/* 双击可编辑单元格 */
+.bk-editable { cursor: text; position: relative; }
+.bk-editable:hover { background: var(--color-primary-bg); outline: 1px dashed var(--color-primary); outline-offset: -1px; }
+.bk-edit-input, .bk-edit-sel {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 3px 5px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-primary);
+}
+.bk-edit-sel { cursor: pointer; }
+
 /* Action button row */
 .bk-action-bar {
   display: flex;
@@ -2892,12 +2908,12 @@ function renderBillTable() {
       ? (INCOME_CATEGORIES.find(c=>c.key===b.category)||{}).name || b.category
       : (EXPENSE_CATEGORIES.find(c=>c.key===b.category)||{}).name || b.category;
     return `<tr>
-      <td>${formatDisplayDate(b.date)}</td>
-      <td>${escHtml(b.summary)}</td>
-      <td>${b.type==='income'?'<span class="tag-income">收入</span>':'<span class="tag-expense">支出</span>'}</td>
-      <td><span class="tag-category">${escHtml(catName)}</span></td>
-      <td class="${b.type==='income'?'amount-income':'amount-expense'}">${fmt(b.amount)}</td>
-      <td style="color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(b.note)}</td>
+      <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="date" ondblclick="bkBeginEdit(this)" title="双击修改">${formatDisplayDate(b.date)}</td>
+      <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="summary" ondblclick="bkBeginEdit(this)" title="双击修改">${escHtml(b.summary)}</td>
+      <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="type" ondblclick="bkBeginEdit(this)" title="双击修改">${b.type==='income'?'<span class="tag-income">收入</span>':'<span class="tag-expense">支出</span>'}</td>
+      <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="category" ondblclick="bkBeginEdit(this)" title="双击修改"><span class="tag-category">${escHtml(catName)}</span></td>
+      <td class="bk-editable ${b.type==='income'?'amount-income':'amount-expense'}" data-tbl="bill" data-id="${b.id}" data-field="amount" ondblclick="bkBeginEdit(this)" title="双击修改">${fmt(b.amount)}</td>
+      <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="note" ondblclick="bkBeginEdit(this)" title="双击修改" style="color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(b.note)}</td>
       <td><button class="btn-delete" onclick="deleteBill('${b.id}')">删除</button></td>
     </tr>`;
   }).join('');
@@ -4441,6 +4457,7 @@ function bkSmartDedup() {
 // 显示识别结果审核面板
 function bkShowRecResults(bills) {
   const panel = document.getElementById('recResults');
+  const wasHidden = panel.classList.contains('hidden');
   panel.classList.remove('hidden');
 
   // Banner
@@ -4453,12 +4470,12 @@ function bkShowRecResults(bills) {
   tbody.innerHTML = bills.map((b, i) => `
     <tr data-id="${b.id}" class="${b.dupGroup ? 'rec-st-dup' : ''}">
       <td><input type="checkbox" ${b.checked?'checked':''} onchange="_bkState.parsedBills[${i}].checked=this.checked;bkUpdateSelCount()"></td>
-      <td>${b.date}</td>
-      <td>${escHtml(b.summary)}</td>
-      <td><span style="color:${b.type==='income'?'var(--income-green)':'var(--expense-red)'};font-weight:500;font-size:12px">${b.type==='income'?'收入':'支出'}</span></td>
-      <td>${b.category ? (b.type==='income'?INCOME_CATEGORIES.find(c=>c.key===b.category)?.name:EXPENSE_CATEGORIES.find(c=>c.key===b.category)?.name)||b.category : '<span style="color:var(--text-muted)">待分类</span>'}</td>
-      <td style="font-weight:600;color:${b.type==='income'?'var(--income-green)':'var(--expense-red)'}">${fmt(b.amount)}</td>
-      <td>${escHtml(b.note||'—')}</td>
+      <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="date" ondblclick="bkBeginEdit(this)" title="双击修改">${b.date}</td>
+      <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="summary" ondblclick="bkBeginEdit(this)" title="双击修改">${escHtml(b.summary)}</td>
+      <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="type" ondblclick="bkBeginEdit(this)" title="双击修改"><span style="color:${b.type==='income'?'var(--income-green)':'var(--expense-red)'};font-weight:500;font-size:12px">${b.type==='income'?'收入':'支出'}</span></td>
+      <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="category" ondblclick="bkBeginEdit(this)" title="双击修改">${b.category ? (b.type==='income'?INCOME_CATEGORIES.find(c=>c.key===b.category)?.name:EXPENSE_CATEGORIES.find(c=>c.key===b.category)?.name)||b.category : '<span style="color:var(--text-muted)">待分类</span>'}</td>
+      <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="amount" ondblclick="bkBeginEdit(this)" title="双击修改" style="font-weight:600;color:${b.type==='income'?'var(--income-green)':'var(--expense-red)'}">${fmt(b.amount)}</td>
+      <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="note" ondblclick="bkBeginEdit(this)" title="双击修改">${escHtml(b.note||'—')}</td>
       <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${b.status==='new'?'#E8F5E9':b.status==='dup'?'#FFF3E0':'#F5F5F5'};color:${b.status==='new'?'#2E7D32':b.status==='dup'?'#EF6C00':'#666'}">${b.status==='new'?'新识别':b.status==='imported'?'已导入':'重复'}</span></td>
       <td><button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="bkDeleteRecItem(${i})">删除</button></td>
     </tr>`).join('');
@@ -4466,9 +4483,9 @@ function bkShowRecResults(bills) {
   // 去重分组
   bkRenderDupGroups(bills);
   bkUpdateSelCount();
-  
-  // 滚动到结果区
-  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // 仅在首次从隐藏变为显示时滚动到结果区（编辑重渲染不滚动）
+  if (wasHidden) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function bkRenderDupGroups(bills) {
@@ -4493,6 +4510,61 @@ function bkRenderDupGroups(bills) {
 function bkUpdateSelCount() {
   const sel = _bkState.parsedBills.filter(b => b.checked);
   document.getElementById('recSelCount').textContent = sel.length;
+}
+
+// ===== 双击内联编辑（识别结果 + 最近账单通用）=====
+function bkBeginEdit(td) {
+  if (td.querySelector('input,select')) return; // 已在编辑中
+  const tbl = td.dataset.tbl;
+  const field = td.dataset.field;
+  const id = td.dataset.id;
+  const idx = td.dataset.idx;
+  let record;
+  if (tbl === 'rec') record = _bkState.parsedBills[Number(idx)];
+  else record = state.bills.find(b => b.id === id);
+  if (!record) return;
+  const value = record[field];
+  const q = `'${tbl}','${field}','${id}',${idx===undefined? 'null' : idx}`;
+
+  let editor;
+  if (field === 'type') {
+    editor = `<select class="bk-edit-sel" onchange="bkCommitEdit(this,${q})" onblur="bkCommitEdit(this,${q})">
+      <option value="expense" ${value==='expense'?'selected':''}>支出</option>
+      <option value="income" ${value==='income'?'selected':''}>收入</option>
+    </select>`;
+  } else if (field === 'category') {
+    const cats = (record.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES);
+    const opts = cats.map(c => `<option value="${c.key}" ${value===c.key?'selected':''}>${c.name}</option>`).join('');
+    editor = `<select class="bk-edit-sel" onchange="bkCommitEdit(this,${q})" onblur="bkCommitEdit(this,${q})">${opts}</select>`;
+  } else if (field === 'date') {
+    editor = `<input type="date" class="bk-edit-input" value="${value}" onkeydown="if(event.key==='Enter')this.blur()" onblur="bkCommitEdit(this,${q})">`;
+  } else if (field === 'amount') {
+    editor = `<input type="number" step="1" class="bk-edit-input" value="${value}" onkeydown="if(event.key==='Enter')this.blur()" onblur="bkCommitEdit(this,${q})">`;
+  } else {
+    editor = `<input type="text" class="bk-edit-input" value="${escHtml(value||'')}" onkeydown="if(event.key==='Enter')this.blur()" onblur="bkCommitEdit(this,${q})">`;
+  }
+  td.innerHTML = editor;
+  const el = td.querySelector('input,select');
+  el.focus();
+  if (el.select) el.select();
+}
+
+function bkCommitEdit(el, tbl, field, id, idx) {
+  if (el.dataset.done) return;
+  el.dataset.done = '1';
+  const val = el.value;
+  let record;
+  if (tbl === 'rec') record = _bkState.parsedBills[Number(idx)];
+  else record = state.bills.find(b => b.id === id);
+  if (!record) return;
+  record[field] = (field === 'amount') ? (parseFloat(val) || 0) : val;
+  if (field === 'type') record.category = ''; // 切换收支后重置类别，避免错配
+  if (tbl === 'rec') {
+    bkShowRecResults(_bkState.parsedBills);
+  } else {
+    saveState();
+    renderBookkeeping();
+  }
 }
 
 function toggleRecSelectAll() {
