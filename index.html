@@ -2412,7 +2412,7 @@ function calcNetWorth() {
 
 function calcYearlySaved() {
   const year = new Date().getFullYear();
-  const yearBills = state.bills.filter(b => b.date && b.date.startsWith(String(year)));
+  const yearBills = bkCountedBills(state.bills.filter(b => b.date && b.date.startsWith(String(year))));
   let income = 0, expense = 0;
   yearBills.forEach(b => {
     if (b.type === 'income') income += parseFloat(b.amount) || 0;
@@ -2867,12 +2867,19 @@ function submitBill(e) {
     type: document.getElementById('billType').value,
     category: document.getElementById('billCategory').value,
     amount: parseFloat(document.getElementById('billAmount').value) || 0,
-    note: document.getElementById('billNote').value.trim()
+    note: document.getElementById('billNote').value.trim(),
+    source: 'manual', time: '', groupId: '', dedup: '', linkedDrop: false
   };
   if (!bill.date || !bill.summary || !bill.category || bill.amount <= 0) {
     alert('请填写完整：日期、摘要、金额（大于0）、类别'); return;
   }
-  state.bills.push(bill);
+  // 手动录入也走去重：完全重复则不重复添加
+  const res = bkDedupEngine([bill], state.bills);
+  if (res.skipped.length) {
+    bkToast('该账单已存在，未重复添加');
+    return;
+  }
+  state.bills.push(res.kept[0]);
   saveState();
   hideAddForm();
   renderBookkeeping();
@@ -3110,7 +3117,7 @@ function refreshMonthlyView() {
 }
 
 function updateMonthlyMetrics(range) {
-  const bills = getBillsInRange(range.start, range.end);
+  const bills = bkCountedBills(getBillsInRange(range.start, range.end));
   let inc = 0;
   bills.forEach(b => { if (b.type==='income') inc+=parseFloat(b.amount)||0; });
 
@@ -3206,7 +3213,7 @@ function editLiquidCell(mKey, person, index, field, cellEl) {
 }
 
 function renderMonthlyCharts(range) {
-  const bills = getBillsInRange(range.start, range.end);
+  const bills = bkCountedBills(getBillsInRange(range.start, range.end));
   const mKey = 'wb_finance_dist_' + range.labelYear + '-' + String(range.labelMonth).padStart(2,'0');
 
   // ── 1. 收入分布（饼图 + 表格）──
@@ -3896,9 +3903,9 @@ async function bkRecognize() {
     }
   }
 
-  // 去重
+  // 识别阶段去重（批次内：完全重复去重 + 支付穿透关联）
   if (document.getElementById('recDedupToggle')?.checked) {
-    bills = bkDeduplicate(bills);
+    bills = bkDedupWithinBatch(bills);
   }
 
   _bkState.parsedBills = bills;
@@ -3987,68 +3994,106 @@ function bkParseOneLine(line, now) {
   // 自动分类
   const category = bkAutoClassify(summary, type);
 
-  return { id: genId(), date: dateStr, summary, type, category, amount, note: '', source: 'text', checked: true, status: 'new' };
+  return { id: genId(), date: dateStr, summary, type, category, amount, note: '', source: 'text', time: '', groupId: '', dedup: '', linkedDrop: false, checked: true, status: 'new' };
 }
 
-// CSV 文件解析（微信/支付宝/通用格式）
+// CSV 文件解析（微信/支付宝/淘宝等格式，引号感知，按表头定位列）
 async function bkParseCSVFile(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = function(e) {
       const text = e.target.result;
-      const lines = text.split('\n').filter(l => l.trim());
-      if (lines.length < 2) { resolve([]); return; }
+      const records = bkSplitCSVRecords(text);
+      if (records.length < 2) { resolve([]); return; }
 
-      // 检测格式
-      const header = lines[0].toLowerCase();
-      const isWechat = header.includes('交易时间') || header.includes('支付方');
-      const isAlipay = header.includes('交易时间') || header.includes('交易分类');
-      
-      const bills = [];
-      const startIndex = isWechat || isAlipay ? 1 : 0; // 有表头则跳过
+      const header = records[0].map(h => (h || '').trim());
+      const fullLow = header.join('|').toLowerCase();
 
-      for (let i = startIndex; i < Math.min(lines.length, startIndex + 500); i++) {
-        const cells = bkSplitCSVLine(lines[i]);
-        if (cells.length < 3) continue;
+      // 识别来源平台（决定后续支付穿透匹配）：优先看文件名，其次看表头
+      let source = 'csv';
+      const fname = (file && file.name || '').toLowerCase();
+      if (fname.includes('微信') || fname.includes('wechat') || fullLow.includes('微信') || fullLow.includes('微信支付')) source = 'wechat';
+      else if (fname.includes('支付宝') || fname.includes('alipay') || fullLow.includes('支付宝')) source = 'alipay';
+      else if (fname.includes('淘宝') || fname.includes('tmall') || fname.includes('天猫') || fname.includes('京东') || fname.includes('jd') || fname.includes('拼多多') || fname.includes('pdd')
+               || fullLow.includes('淘宝') || fullLow.includes('天猫') || fullLow.includes('京东') || fullLow.includes('拼多多') || fullLow.includes('订单编号') || fullLow.includes('商户订单号') || fullLow.includes('店铺')) source = 'shopping';
 
-        let date='', summary='', amount=0, type='expense';
-
-        if (isWechat) {
-          // 微信: 交易时间,交易类型,交易对方,商品,金额,...
-          date = (cells[0]||'').replace(/\//g, '-').slice(0,10);
-          summary = cells[3] || cells[2] || '未知';
-          const amtStr = (cells[5]||cells[4]||'').replace(/[^0-9.\-]/g,'');
-          amount = parseFloat(amtStr)||0;
-          type = (cells[1]||'').includes('收入') ? 'income' : 'expense';
-        } else if (isAlipay) {
-          // 支付宝: 交易时间,交易分类,交易对方,商品说明,金额,...
-          date = (cells[0]||'').replace(/\//g, '-').slice(0,10);
-          summary = cells[3] || cells[2] || '未知';
-          const amtStr = (cells[4]||'').replace(/[^0-9.\-]/g,'');
-          amount = parseFloat(amtStr)||0;
-          type = amount < 0 ? 'income' : 'expense';
-          amount = Math.abs(amount);
-        } else {
-          // 通用 CSV: 尝试自动检测
-          date = (cells[0]||'').replace(/\//g, '-').slice(0,10);
-          summary = cells[1] || '未知';
-          for (let c of cells) {
-            const m = c.match(/-?(\d+(?:\.\d{1,2})?)/);
-            if (m && parseFloat(m[1]) !== 0) { amount = Math.abs(parseFloat(m[1])); break; }
-          }
+      // 按表头关键字定位列（不依赖固定顺序）
+      const col = (...cands) => {
+        for (const c of cands) {
+          const i = header.findIndex(h => h && h.replace(/\s/g,'').toLowerCase().includes(c.toLowerCase()));
+          if (i >= 0) return i;
         }
+        return -1;
+      };
+      const iDate  = col('交易时间','记账时间','记账日期','日期','时间');
+      const iType  = col('交易类型','收支类型','资金流向');
+      const iDir   = col('收/支','收付款方式','收/付款方式','收付方向');
+      const iParty = col('交易对方','对方','商户','商家','付款方','收款方','支付方');
+      const iGoods = col('商品','交易说明','说明','备注','摘要','交易备注');
+      const iAmt   = col('金额','交易金额','收/支金额','收支金额','实付金额','实际支付');
 
-        if (!date || !amount || amount <= 0) continue;
-        // 验证日期格式
+      const bills = [];
+      for (let r = 1; r < records.length; r++) {
+        const cells = records[r];
+        if (cells.every(c => !(c||'').trim())) continue;
+
+        // 日期 + 时间
+        let date = '', time = '';
+        const rawDT = (cells[iDate] || '').trim().replace(/\//g, '-');
+        if (rawDT) {
+          const sp = rawDT.split(/[\sT]+/);
+          date = (sp[0] || '').slice(0, 10);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            const m = date.match(/(\d{4})年(\d{1,2})月(\d{1,2})/);
+            if (m) date = `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+          }
+          time = (sp[1] || '').slice(0, 8);
+        }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
 
+        const summary = (cells[iGoods] || cells[iParty] || '').trim() || '未知';
+        const amtStr = (cells[iAmt] || '').replace(/[^0-9.\-]/g, '');
+        let amount = parseFloat(amtStr) || 0;
+        if (amount <= 0) continue;
+        amount = Math.abs(amount);
+
+        let type = 'expense';
+        const typeCell = (cells[iType] || '').toLowerCase();
+        const dirCell = (cells[iDir] || '').toLowerCase();
+        if (typeCell.includes('收入') || typeCell.includes('退款') || typeCell.includes('转入') || dirCell.includes('收入')) type = 'income';
+        else if (source === 'alipay' && (cells[iAmt]||'').includes('-')) type = 'income';
+
         const category = bkAutoClassify(summary, type);
-        bills.push({ id: genId(), date, summary, type, category, amount, note: '', source: file.name, checked: true, status: 'imported' });
+        bills.push({ id: genId(), date, summary, type, category, amount, note: '', source, time, groupId: '', dedup: '', linkedDrop: false, checked: true, status: 'imported' });
       }
       resolve(bills);
     };
     reader.readAsText(file, 'UTF-8');
   });
+}
+
+// 引号感知：单遍把整段文本拆成「记录数组」（每条记录是单元格数组），
+// 正确处理单元格内逗号、单元格内换行、以及 "" 转义引号
+function bkSplitCSVRecords(text) {
+  const records = [];
+  let row = [], cell = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQ && text[i+1] === '"') { cell += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      row.push(cell); cell = '';
+    } else if (ch === '\n' && !inQ) {
+      row.push(cell); records.push(row); row = []; cell = '';
+    } else if (ch === '\r' && !inQ) {
+      // 忽略 \r，交由 \n 切分
+    } else {
+      cell += ch;
+    }
+  }
+  if (cell !== '' || row.length > 0) { row.push(cell); records.push(row); }
+  return records.filter(r => r.some(c => (c||'').trim() !== ''));
 }
 
 function bkSplitCSVLine(line) {
@@ -4432,26 +4477,146 @@ function parseZIP(data) {
 }
 
 // 智能去重（同日期+同金额+同类别 = 重复）
-function bkDeduplicate(bills) {
-  const seen = {};
-  const result = [];
-  for (const b of bills) {
-    const key = `${b.date}|${b.amount}|${b.category}`;
-    if (seen[key]) {
-      seen[key].push(b);
-    } else {
-      seen[key] = [b];
-      result.push({ ...b, dupGroup: seen[key].length ? seen[key][0].id : null });
-    }
-  }
-  return result;
+// ============================================================
+// 智能去重 / 支付穿透引擎
+// ============================================================
+const BK_SHOPPING_SRCS = ['taobao','tmall','jd','pdd','suning','vip','douyin','shopping'];
+const BK_PAYMENT_SRCS  = ['wechat','alipay'];
+
+// 归一商户：去掉支付前缀、括号内容、空白标点，用于指纹匹配
+function bkNormMerchant(s) {
+  if (!s) return '';
+  let t = String(s).toLowerCase();
+  t = t.replace(/^(微信支付|支付宝|收钱吧|云闪付|财付通)[-—:：]?/, '');
+  t = t.replace(/[（(][^()）]*[)）]/g, '');
+  t = t.replace(/[\s\-_·•·，,。、.]/g, '');
+  return t;
 }
 
+// 指纹：金额(分)|日期|归一商户 —— 忽略来源，跨源真重复也能命中
+function bkFingerprint(b) {
+  return Math.round((parseFloat(b.amount) || 0) * 100) + '|' + (b.date || '') + '|' + bkNormMerchant(b.summary);
+}
+
+// 日期+时间 → 毫秒；无时间返回 null
+function bkTs(b) {
+  if (b.date && b.time && /^\d{1,2}:\d{2}/.test(b.time)) {
+    const d = new Date(b.date + 'T' + b.time);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  }
+  return null;
+}
+
+// 场景3：购物平台 ↔ 微信/支付宝，金额相等，时间差 ≤10 分钟（无时间则退化为同日）
+function bkIsTunnelPair(a, b) {
+  const sa = a.source, sb = b.source;
+  const cross = (BK_SHOPPING_SRCS.includes(sa) && BK_PAYMENT_SRCS.includes(sb)) ||
+                (BK_PAYMENT_SRCS.includes(sa) && BK_SHOPPING_SRCS.includes(sb));
+  if (!cross) return false;
+  if (Math.abs((parseFloat(a.amount) || 0) - (parseFloat(b.amount) || 0)) > 0.01) return false;
+  const ta = bkTs(a), tb = bkTs(b);
+  if (ta && tb) return Math.abs(ta - tb) <= 10 * 60 * 1000;
+  return a.date === b.date;
+}
+
+// candidates：待入账新记录；existing：已有账单（引用，关联时直接打 groupId）
+function bkDedupEngine(candidates, existing) {
+  const kept = [], skipped = [], linked = [];
+  const seen = new Set();
+  const byAmt = {};
+  existing.forEach(b => {
+    seen.add(bkFingerprint(b));
+    const k = Math.round((parseFloat(b.amount) || 0) * 100);
+    (byAmt[k] = byAmt[k] || []).push(b);
+  });
+
+  for (const c of candidates) {
+    const fp = bkFingerprint(c);
+    if (seen.has(fp)) { skipped.push(c); continue; }               // 场景 1 / 2 完全重复
+    let hit = null;
+    const k = Math.round((parseFloat(c.amount) || 0) * 100);
+    for (const e of (byAmt[k] || [])) {
+      if (bkIsTunnelPair(c, e)) { hit = e; break; }
+    }
+    if (hit) {                                                      // 场景 3 支付穿透
+      const gid = hit.groupId || c.id;
+      c.groupId = gid; c.dedup = 'linked';
+      hit.groupId = gid; hit.dedup = 'linked';
+      if (BK_PAYMENT_SRCS.includes(c.source)) c.linkedDrop = true;
+      else if (BK_PAYMENT_SRCS.includes(hit.source)) hit.linkedDrop = true;
+      linked.push({ a: c, b: hit });
+      kept.push(c); seen.add(fp); continue;
+    }
+    kept.push(c); seen.add(fp);
+  }
+  return { kept, skipped, linked };
+}
+
+// 统计求和时调用：同一 groupId 只计一次（保留购物平台记录，丢弃支付平台记录）
+function bkCountedBills(bills) {
+  const drop = new Set();
+  const byGroup = {};
+  bills.forEach(b => { if (b.groupId) (byGroup[b.groupId] = byGroup[b.groupId] || []).push(b); });
+  Object.values(byGroup).forEach(g => {
+    const keep = g.find(x => BK_SHOPPING_SRCS.includes(x.source)) || g[0];
+    g.forEach(x => { if (x !== keep) drop.add(x.id); });
+  });
+  return bills.filter(b => !drop.has(b.id));
+}
+
+// 识别解析阶段：在「本次识别结果」内部去重（完全重复去重，支付穿透打 groupId），不影响已入账数据
+function bkDedupWithinBatch(bills) {
+  const seen = new Set();
+  const keep = [];
+  const byAmt = {};
+  bills.forEach(b => { const k = Math.round((parseFloat(b.amount)||0)*100); (byAmt[k] = byAmt[k] || []).push(b); });
+  for (const b of bills) {
+    const fp = bkFingerprint(b);
+    if (seen.has(fp)) continue;                 // 批次内完全重复，只留第一条
+    seen.add(fp);
+    const k = Math.round((parseFloat(b.amount)||0)*100);
+    for (const o of (byAmt[k] || [])) {
+      if (o === b || o._tChecked) continue;
+      if (bkIsTunnelPair(b, o)) {
+        const gid = b.id;
+        b.groupId = gid; b.dedup = 'linked';
+        o.groupId = gid; o.dedup = 'linked';
+        if (BK_PAYMENT_SRCS.includes(o.source)) o.linkedDrop = true;
+        else if (BK_PAYMENT_SRCS.includes(b.source)) b.linkedDrop = true;
+        o._tChecked = true;
+      }
+    }
+    keep.push(b);
+  }
+  return keep;
+}
+
+// 轻提示（非阻塞）
+function bkToast(msg) {
+  let t = document.getElementById('bkToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'bkToast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:#333;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.2)';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2600);
+}
+
+// 识别面板「智能去重」按钮：预扫描待审列表，移除完全重复、标记支付穿透
 function bkSmartDedup() {
-  if (!_bkState.parsedBills.length) { alert('暂无数据可去重，请先点击「识别解析」'); return; }
-  _bkState.parsedBills = bkDeduplicate(_bkState.parsedBills);
+  const pending = _bkState.parsedBills;
+  if (!pending.length) { alert('暂无数据可去重，请先点击「识别解析」'); return; }
+  const res = bkDedupEngine(pending, state.bills);
+  _bkState.parsedBills = res.kept;
   bkShowRecResults(_bkState.parsedBills);
-  alert(`去重完成！${_bkState.parsedBills.length} 条记录`);
+  let msg = `去重扫描完成：保留 ${res.kept.length} 条`;
+  if (res.skipped.length) msg += `，移除 ${res.skipped.length} 条完全重复`;
+  if (res.linked.length) msg += `，关联 ${res.linked.length} 组支付穿透`;
+  alert(msg);
 }
 
 // 显示识别结果审核面板
@@ -4460,15 +4625,22 @@ function bkShowRecResults(bills) {
   const wasHidden = panel.classList.contains('hidden');
   panel.classList.remove('hidden');
 
-  // Banner
+  // Banner：计算重复/关联
+  const fpCount = {};
+  bills.forEach(b => { const fp = bkFingerprint(b); fpCount[fp] = (fpCount[fp]||0)+1; });
+  const gidCount = {};
+  bills.forEach(b => { if (b.groupId) gidCount[b.groupId] = (gidCount[b.groupId]||0)+1; });
+  const dupSet = new Set();
+  Object.keys(fpCount).forEach(fp => { if (fpCount[fp] > 1) bills.forEach(b => { if (bkFingerprint(b) === fp) dupSet.add(b.id); }); });
+  Object.keys(gidCount).forEach(g => { if (gidCount[g] > 1) bills.forEach(b => { if (b.groupId === g) dupSet.add(b.id); }); });
+  const dupCount = dupSet.size;
   const bannerTxt = document.getElementById('recBannerTxt');
-  const dupCount = bills.filter(b => b.dupGroup).length;
-  bannerTxt.innerHTML = `共识别 <b>${bills.length}</b> 条账单${dupCount > 0 ? `，发现 <b style="color:var(--expense-red)">${dupCount}</b> 条可能重复` : ''}`;
+  bannerTxt.innerHTML = `共识别 <b>${bills.length}</b> 条账单${dupCount > 0 ? `，发现 <b style="color:var(--expense-red)">${dupCount}</b> 条可能重复/关联` : ''}`;
 
   // 表格
   const tbody = document.getElementById('recTblBody');
   tbody.innerHTML = bills.map((b, i) => `
-    <tr data-id="${b.id}" class="${b.dupGroup ? 'rec-st-dup' : ''}">
+    <tr data-id="${b.id}" class="${dupSet.has(b.id) ? 'rec-st-dup' : ''}">
       <td><input type="checkbox" ${b.checked?'checked':''} onchange="_bkState.parsedBills[${i}].checked=this.checked;bkUpdateSelCount()"></td>
       <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="date" ondblclick="bkBeginEdit(this)" title="双击修改">${b.date}</td>
       <td class="bk-editable" data-tbl="rec" data-idx="${i}" data-field="summary" ondblclick="bkBeginEdit(this)" title="双击修改">${escHtml(b.summary)}</td>
@@ -4489,22 +4661,30 @@ function bkShowRecResults(bills) {
 }
 
 function bkRenderDupGroups(bills) {
-  const dupBills = bills.filter(b => b.dupGroup);
   const container = document.getElementById('recGroupList');
-  if (!dupBills.length) { container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;text-align:center;padding:12px 0">✅ 未发现重复记录</p>'; return; }
+  // 完全重复（同指纹）
+  const byFp = {};
+  bills.forEach(b => { const fp = bkFingerprint(b); (byFp[fp] = byFp[fp] || []).push(b); });
+  // 支付穿透（groupId）
+  const byGid = {};
+  bills.forEach(b => { if (b.groupId) (byGid[b.groupId] = byGid[b.groupId] || []).push(b); });
 
-  // Group by original
-  const groups = {};
-  for (const b of dupBills) {
-    if (!groups[b.dupGroup]) groups[b.dupGroup] = [];
-    groups[b.dupGroup].push(b);
-  }
+  const groups = [];
+  Object.values(byFp).forEach(g => { if (g.length > 1) groups.push({ type: 'dup', items: g }); });
+  Object.values(byGid).forEach(g => { if (g.length > 1) groups.push({ type: 'tunnel', items: g }); });
 
-  container.innerHTML = Object.values(groups).map(g => `
-    <div style="padding:10px 12px;background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;margin-bottom:8px">
-      <div style="font-size:12px;color:#E65100;margin-bottom:6px">⚠️ 可能重复 (${g.length}条相同)</div>
-      ${g.map(b => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>${b.date} · ${escHtml(b.summary)}</span><span style="font-weight:600;color:var(--expense-red)">${fmt(b.amount)}</span></div>`).join('')}
+  if (!groups.length) { container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;text-align:center;padding:12px 0">未发现重复 / 关联记录</p>'; return; }
+
+  container.innerHTML = groups.map(g => `
+    <div style="padding:10px 12px;background:${g.type==='tunnel'?'#FFF8E1':'#FDECEA'};border:1px solid ${g.type==='tunnel'?'#FFE082':'#FFCDD2'};border-radius:8px;margin-bottom:8px">
+      <div style="font-size:12px;color:${g.type==='tunnel'?'#E65100':'#C0392B'};margin-bottom:6px">${g.type==='tunnel'?'支付穿透关联':'完全重复'} (${g.items.length}条)</div>
+      ${g.items.map(b => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>${b.date}${b.time?' '+b.time:''} · ${escHtml(b.summary)} · <span style="color:#888">${bkSourceName(b.source)}</span></span><span style="font-weight:600;color:var(--expense-red)">${fmt(b.amount)}</span></div>`).join('')}
     </div>`).join('');
+}
+
+function bkSourceName(src) {
+  const map = { manual:'手动', text:'文字', image:'图片', wechat:'微信', alipay:'支付宝', taobao:'淘宝', tmall:'天猫', jd:'京东', pdd:'拼多多', shopping:'购物', csv:'文件' };
+  return map[src] || src || '未知';
 }
 
 function bkUpdateSelCount() {
@@ -4584,23 +4764,30 @@ function bkDeleteRecItem(idx) {
 function bkConfirmSelected() {
   const toConfirm = _bkState.parsedBills.filter(b => b.checked);
   if (!toConfirm.length) { alert('请先勾选要入账的记录'); return; }
-  if (!confirm(`确认将 ${toConfirm.length} 条记录入账？`)) return;
 
-  const bills = state.bills;
-  bills.push(...toConfirm.map(b => ({
-    id: b.id, date: b.date, summary: b.summary,
-    type: b.type, category: b.category,
-    amount: b.amount, note: b.note || ''
-  })));
+  // 智能去重：完全重复自动跳过，支付穿透自动关联
+  const res = bkDedupEngine(toConfirm, state.bills);
+  res.kept.forEach(b => {
+    state.bills.push({
+      id: b.id, date: b.date, summary: b.summary,
+      type: b.type, category: b.category,
+      amount: b.amount, note: b.note || '',
+      source: b.source || 'text', time: b.time || '',
+      groupId: b.groupId || '', dedup: b.dedup || '', linkedDrop: !!b.linkedDrop
+    });
+  });
   saveState();
 
-  // 从待审列表移除
+  // 从待审列表移除已勾选项
   _bkState.parsedBills = _bkState.parsedBills.filter(b => !b.checked);
   bkShowRecResults(_bkState.parsedBills);
   document.getElementById('statPending').textContent = _bkState.parsedBills.length;
 
   renderBookkeeping();
-  alert(`✅ 已成功入账 ${toConfirm.length} 条记录！`);
+  let msg = `已入账 ${res.kept.length} 条`;
+  if (res.skipped.length) msg += `，自动跳过 ${res.skipped.length} 条重复`;
+  if (res.linked.length) msg += `，关联 ${res.linked.length} 组支付穿透（只计1次）`;
+  bkToast(msg);
 }
 
 // 确认全部入账
@@ -4623,8 +4810,14 @@ function bkExportRecCSV() {
 // 忽略重复项
 function bkIgnoreDuplicates() {
   const before = _bkState.parsedBills.length;
-  _bkState.parsedBills = _bkState.parsedBills.filter(b => !b.dupGroup);
-  const removed = before - _bkState.parsedBills.length;
+  const seen = new Set(); const keep = [];
+  _bkState.parsedBills.forEach(b => {
+    const fp = bkFingerprint(b);
+    if (seen.has(fp)) return;
+    seen.add(fp); keep.push(b);
+  });
+  const removed = before - keep.length;
+  _bkState.parsedBills = keep;
   bkShowRecResults(_bkState.parsedBills);
   document.getElementById('statPending').textContent = _bkState.parsedBills.length;
   if (removed > 0) alert(`已忽略 ${removed} 条重复记录`);
