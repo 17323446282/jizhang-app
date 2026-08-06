@@ -3527,16 +3527,30 @@ function closeModal() {
 function loadOcrConfig() { /* 纯前端 OCR，无需密钥配置 */ }
 
 var _tesseractLoading = null;
+// CDN 列表：国内镜像优先，jsdelivr 兜底
+var _tesseractCdns = [
+  'https://registry.npmmirror.com/tesseract.js/5.1.1/files/dist/tesseract.min.js',
+  'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js',
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'
+];
+var _tesseractCdnIdx = 0;
+
 function loadTesseract() {
   if (typeof Tesseract !== 'undefined' && Tesseract.recognize) return Promise.resolve(Tesseract);
   if (_tesseractLoading) return _tesseractLoading;
-  _tesseractLoading = new Promise(function(resolve, reject) {
-    var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-    s.onload = function() { resolve(window.Tesseract); };
-    s.onerror = function() { reject(new Error('OCR 引擎加载失败，请检查网络后重试')); };
-    document.head.appendChild(s);
-  });
+  _tesseractLoading = (function tryLoad() {
+    if (_tesseractCdnIdx >= _tesseractCdns.length) {
+      return Promise.reject(new Error('OCR 引擎加载失败（所有CDN源均不可用），请检查网络后重试'));
+    }
+    var url = _tesseractCdns[_tesseractCdnIdx++];
+    return new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = url;
+      s.onload = function() { resolve(window.Tesseract); };
+      s.onerror = function() { resolve(tryLoad()); }; // 静默尝试下一个
+      document.head.appendChild(s);
+    });
+  })();
   return _tesseractLoading;
 }
 
@@ -4069,6 +4083,12 @@ function parseOCRResultToBills(textDets, invoiceData, fileName) {
       bills = parseGenericReceipt(textDets, fullText, fileName);
   }
 
+  // 降级兜底：专用解析器没匹配到时，用通用解析器再试一次
+  if (bills.length === 0 && imgType !== 'generic') {
+    var fallbackBills = parseGenericReceipt(textDets, fullText, fileName);
+    if (fallbackBills.length > 0) bills = fallbackBills;
+  }
+
   return bills;
 }
 
@@ -4189,23 +4209,26 @@ function parseInvoiceData(invData, fileName) {
  */
 function parseInvoiceFromText(textDets, fullText, fileName) {
   var bills = [];
-  var text = fullText;
+  // 清理 OCR 噪声：去除多余空格、合并断行
+  var text = fullText.replace(/\s+/g, ' ').replace(/(\d) (\d)/g, '$1$2');
 
-  // 价税合计
-  var amtMatch = text.match(/价税合计[（(][^)]*[）)][：:\s]*¥?(\d+\.?\d*)/) ||
-                 text.match(/价税合计[：:\s]*¥?(\d+\.?\d*)/) ||
-                 text.match(/合计[：:\s]*¥?(\d+\.?\d*)/) ||
+  // 价税合计（多种 OCR 变体）
+  var amtMatch = text.match(/价税合计[（(][^）)]*[）)]\s*[：:]*\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/价税合计[（(]\s*小写\s*[）)]\s*[：:]*\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/价税合计\s*[：:]\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/合计\s*[：:]\s*¥?(\d+\.?\d*)/) ||
                  text.match(/¥\s*(\d+\.?\d*)/);
   var amount = amtMatch ? parseFloat(amtMatch[1]) : 0;
 
   // 开票日期
-  var dateMatch = text.match(/开票日期[：:\s]*(\d{4}[^\n\r]*)/) ||
-                  text.match(/(\d{4}[-年]\d{1,2}[-月]\d{1,2})/);
-  var dateStr = dateMatch ? dateMatch[1].replace(/年|月/g, '-').replace(/日/g, '') : formatDateISO(new Date());
+  var dateMatch = text.match(/开票日期[：:\s]*(\d{4}[^\n\r]{0,20})/) ||
+                  text.match(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/);
+  var dateStr = dateMatch ? dateMatch[1].replace(/年|月/g, '-').replace(/日/g, '').substring(0, 10) : formatDateISO(new Date());
 
-  // 项目名称
-  var itemMatch = text.match(/(?:项目|货物|服务)[名称：:\s]*([^\n\r￥¥]+)/i);
-  var summary = itemMatch ? itemMatch[1].trim().substring(0, 50) : '发票支出';
+  // 项目名称 / 货物名称
+  var itemMatch = text.match(/(?:项目|货物|服务)[名称：:\s]*([^\n\r￥¥0-9]+)/i) ||
+                  text.match(/名称[：:\s]*([^\n\r￥¥0-9]+)/i);
+  var summary = itemMatch ? itemMatch[1].trim().substring(0, 50).replace(/\s+/g, ' ') : '发票支出';
 
   if (amount > 0) {
     bills.push({
@@ -4332,23 +4355,52 @@ function parseGenericReceipt(textDets, fullText, fileName) {
   var bills = [];
   var text = fullText;
 
-  // 尝试找金额
-  var amountMatch = text.match(/¥\s*(\d+\.?\d*)/) ||
-                    text.match(/(\d+\.\d{2})\s*元/) ||
-                    text.match(/金额[：:\s]*(\d+\.?\d*)/);
+  // 尝试找金额（按优先级排列，覆盖 Tesseract 各种 OCR 输出格式）
+  var amountMatch = text.match(/价税合计[（(][^）)]*[）)]\s*[：:]*\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/价税合计\s*[：:]\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/实付[款额]?\s*[：:]\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/实付款\s*[：:]\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/¥\s*(\d+\.?\d*)/) ||
+                 text.match(/(\d+\.\d{2})\s*元/) ||
+                 text.match(/金额[：:\s]*(\d+\.?\d*)/) ||
+                 text.match(/合计\s*[：:]\s*¥?(\d+\.?\d*)/) ||
+                 text.match(/(\d{1,6})\s*元/);  // 兜底：数字+元
   var amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
 
+  // 过滤掉明显不是金额的数字（如日期、编号等）
+  if (amount > 100000) amount = 0; // 超过10万大概率是编号而非金额
+
   // 找日期
-  var dateMatch = text.match(/(\d{4}[-年]\d{1,2}[-月]\d{1,2})/);
-  var dateStr = dateMatch ? dateMatch[1].replace(/年|月/g, '-').replace(/日/g, '') : formatDateISO(new Date());
+  var dateMatch = text.match(/(\d{4})[-年](\d{1,2})[-月](\d{1,2})/) ||
+                  text.match(/开票日期[：:\s]*(\d{4}[^\n\r]*)/) ||
+                  text.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})/);
+  var dateStr = dateMatch ? (dateMatch[1] + '-' + String(dateMatch[2]).padStart(2,'0') + '-' + String(dateMatch[3]).padStart(2,'0')) : formatDateISO(new Date());
 
   if (amount > 0) {
+    // 尝试提取有意义的摘要（取包含金额的那一行或最长的非空行）
+    var lines = text.split(/\r?\n/).filter(function(l) { return l.trim().length > 3; });
+    var summary = 'OCR识别';
+    if (lines.length > 0) {
+      // 优先选包含金额数字的行
+      for (var li = 0; li < lines.length; li++) {
+        if (lines[li].indexOf(String(amount)) >= 0 || lines[li].indexOf(amountMatch[0]) >= 0) {
+          summary = lines[li].trim().substring(0, 50).replace(/[¥\d.\s]+$/, '').replace(/\s+/g, ' ');
+          break;
+        }
+      }
+      // 如果没找到含金额的行，用最长行
+      if (summary === 'OCR识别' && lines.length > 0) {
+        var longest = lines.reduce(function(a, b) { return a.length > b.length ? a : b; });
+        summary = longest.trim().substring(0, 50).replace(/\s+/g, ' ');
+      }
+    }
+
     bills.push({
       id: genId(),
       date: normalizeDate(dateStr),
-      summary: text.substring(0, 50).replace(/\n/g, ' ').trim(),
+      summary: summary || 'OCR识别',
       type: 'expense',
-      category: '其他支出',
+      category: autoCategorize(summary),
       amount: amount,
       note: '来源：' + fileName + '（OCR自动识别，请核对）',
       source: 'ocr-generic',
@@ -4439,6 +4491,13 @@ async function recognizeImages(images) {
       // 3. 解析为账单
       var imgBills = parseOCRResultToBills(textDets, null, fileName);
       allBills = allBills.concat(imgBills);
+
+      // 调试：记录原始识别文本（解析失败时用于排查）
+      if (imgBills.length === 0) {
+        console.warn('[OCR调试] 「' + fileName + '」识别文本但未解析出账单，原始文本：\n' + text);
+        window.__lastOcrText = window.__lastOcrText || {};
+        window.__lastOcrText[fileName] = text;
+      }
 
       markImageThumb(i, imgBills.length > 0 ? 'ok' : 'empty');
 
@@ -4599,7 +4658,17 @@ async function bkRecognize() {
   bkShowRecResults(bills);
 
   if (bills.length === 0) {
-    alert('未识别到有效账单，请检查输入格式。\n\n支持格式示例：\n2026年8月12日 宝宝奶粉 ¥398\n昨天 工资到账 ¥8000 收入');
+    // 如果有图片OCR原始文本，显示出来方便调试
+    var ocrDebug = '';
+    if (window.__lastOcrText) {
+      var keys = Object.keys(window.__lastOcrText);
+      if (keys.length > 0) {
+        ocrDebug = '\n\n--- OCR 识别到的原始文本 ---\n';
+        keys.forEach(function(k) { ocrDebug += '【' + k + '】:\n' + window.__lastOcrText[k].substring(0, 500) + '\n'; });
+        ocrDebug += '\n（如识别文本正确但未生成账单，请截图发给开发者调整解析规则）';
+      }
+    }
+    alert('未识别到有效账单' + (ocrDebug || '，请检查输入格式。') + '\n\n支持格式示例：\n2026年8月12日 宝宝奶粉 ¥398\n昨天 工资到账 ¥8000 收入');
   }
 }
 
