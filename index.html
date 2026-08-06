@@ -3,9 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <title>阿双的记账工作台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23D4A0A5'/><circle cx='16' cy='16' r='9' fill='%23ffffff'/><text x='16' y='21' font-size='13' font-weight='700' fill='%23C0888E' text-anchor='middle' font-family='sans-serif'>¥</text></svg>">
 <style>
@@ -1628,7 +1625,7 @@ input[type="number"] { -moz-appearance: textfield; }
         <circle cx="12" cy="12" r="6.5" fill="#FFFFFF"/>
         <text x="12" y="15.9" font-size="9.5" font-weight="700" fill="var(--color-primary-dark)" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif">¥</text>
       </svg>
-      阿双的记账工作台 <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px">v2026.08.06e</span>
+      阿双的记账工作台 <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px">v2026.08.06b</span>
     </h1>
   </div>
   <ul class="nav-list">
@@ -3899,7 +3896,7 @@ async function bkRecognize() {
   // 2. 解析文件（CSV / XLSX）
   for (const f of _bkState.files) {
     if (f.name.endsWith('.csv')) {
-      bills = bills.concat(await bkParseCSVFile(f));
+      bills = bills.concat(bkParseCSVFile(f));
     } else if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls')) {
       const xlsxBills = await bkParseXLSXFile(f);
       bills = bills.concat(xlsxBills);
@@ -4004,7 +4001,7 @@ function bkParseOneLine(line, now) {
 async function bkParseCSVFile(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = async function(e) {
+    reader.onload = function(e) {
       // 支付宝/淘宝 CSV 常为 GBK 编码，浏览器默认 UTF-8 会乱码
       // 先用 UTF-8 解码；若找不到中文表头关键字，回退到 GBK 重试
       const buf = e.target.result;
@@ -4103,26 +4100,6 @@ async function bkParseCSVFile(file) {
         const category = bkAutoClassify(summary, type);
         bills.push({ id: genId(), date, summary, type, category, amount, note: '', source, time, groupId: '', dedup: '', linkedDrop: false, checked: true, status: 'imported' });
       }
-
-      // === Fallback：如果直接解析结果太差（有效数据少），自动在内存中转成 xlsx 再解析 ===
-      // 某些浏览器环境下 TextDecoder('gbk') 行为不一致导致 CSV 解析失败
-      // xlsx 解析器已验证稳定可用，所以转 xlsx 是最可靠的兜底方案
-      if (bills.length <= 1 && text.length > 200) {
-        console.warn('[CSV] 直接解析结果不佳(', bills.length, '条)，自动转 xlsx 重试...');
-        try {
-          const xlsxBytes = bkCSVToXLSXBytes(text);
-          const xlsxBlob = new Blob([xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-          const xlsxFile = new File([xlsxBlob], (file.name || 'data').replace(/\.csv$/i, '') + '.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-          const xlsxBills = await bkParseXLSXFile(xlsxFile);
-          if (xlsxBills.length > bills.length) {
-            console.log('[CSV] xlsx 转换成功，识别到', xlsxBills.length, '条');
-            resolve(xlsxBills); return;
-          }
-        } catch(fallbackErr) {
-          console.warn('[CSV] xlsx fallback 也失败:', fallbackErr.message);
-        }
-      }
-
       resolve(bills);
     };
     reader.readAsArrayBuffer(file);
@@ -4163,171 +4140,6 @@ function bkSplitCSVLine(line) {
   }
   result.push(current);
   return result;
-}
-
-// ========== CSV → XLSX 内存转换器（零依赖，用于 CSV 解析失败时的自动 fallback）==========
-// 原理：解析 CSV → 生成 xlsx 所需 XML → 用 ZIP stored 模式打包（无需 DEFLATE 压缩）
-// 触发条件：bkParseCSVFile 直接解析结果 <=1 条时自动调用
-
-// CRC32 表（ZIP 格式需要校验值）
-const _bkCRC32Table = (function() {
-  const t = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    t[i] = c;
-  }
-  return t;
-})();
-function bkCRC32(buf) {
-  let crc = 0xFFFFFFFF;
-  for (let i = 0; i < buf.length; i++) crc = _bkCRC32Table[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
-  return (crc ^ 0xFFFFFFFF) >>> 0;
-}
-
-// 构建 ZIP 文件（stored 模式，compression=0，不压缩）
-// files: [{name: string, data: Uint8Array}]
-function bkBuildZIP(files) {
-  const parts = [];
-  const centralDir = [];
-  let offset = 0;
-
-  for (const f of files) {
-    const nameBytes = new TextEncoder().encode(f.name);
-    const data = f.data instanceof Uint8Array ? f.data : new TextEncoder().encode(f.data);
-    const crc = bkCRC32(data);
-
-    // Local file header (30 + nameLen + data)
-    const lh = new Uint8Array(30 + nameBytes.length + data.length);
-    const lhv = new DataView(lh.buffer);
-    lhv.setUint32(0, 0x04034b50, true);   // signature
-    lhv.setUint16(4, 20, true);              // version needed
-    lhv.setUint16(6, 0, true);               // flags
-    lhv.setUint16(8, 0, true);               // compression method: stored
-    lhv.setUint16(10, 0, true);              // mod time
-    lhv.setUint16(12, 0, true);              // mod date
-    lhv.setUint32(14, crc, true);            // crc32
-    lhv.setUint32(18, data.length, true);    // compressed size
-    lhv.setUint32(22, data.length, true);    // uncompressed size
-    lhv.setUint16(26, nameBytes.length, true);// file name length
-    lhv.setUint16(28, 0, true);              // extra length
-    lh.set(nameBytes, 30);                   // file name
-    lh.set(data, 30 + nameBytes.length);     // file data
-    parts.push(lh);
-
-    // Central directory entry (46 + nameLen)
-    const cd = new Uint8Array(46 + nameBytes.length);
-    const cdv = new DataView(cd.buffer);
-    cdv.setUint32(0, 0x02014b50, true);      // signature
-    cdv.setUint16(4, 20, true);              // version made by
-    cdv.setUint16(6, 20, true);              // version needed
-    cdv.setUint16(8, 0, true);               // flags
-    cdv.setUint16(10, 0, true);              // compression: stored
-    cdv.setUint16(12, 0, true);              // mod time
-    cdv.setUint16(14, 0, true);              // mod date
-    cdv.setUint32(16, crc, true);            // crc32
-    cdv.setUint32(20, data.length, true);    // compressed size
-    cdv.setUint32(24, data.length, true);    // uncompressed size
-    cdv.setUint16(28, nameBytes.length, true);// file name length
-    cdv.setUint16(30, 0, true);              // extra length
-    cdv.setUint16(32, 0, true);              // comment length
-    cdv.setUint16(34, 0, true);              // disk number start
-    cdv.setUint16(36, 0, true);              // internal attrs
-    cdv.setUint32(38, 0, true);              // external attrs
-    cdv.setUint32(42, offset, true);         // local header offset
-    cd.set(nameBytes, 46);
-    centralDir.push(cd);
-
-    offset += lh.length;
-  }
-
-  // End of central directory record (22 bytes)
-  const cdSize = centralDir.reduce((s, c) => s + c.length, 0);
-  const eocd = new Uint8Array(22);
-  const eocdv = new DataView(eocd.buffer);
-  eocdv.setUint32(0, 0x06054b50, true);     // signature
-  eocdv.setUint16(4, 0, true);              // disk number
-  eocdv.setUint16(6, 0, true);              // disk with CD
-  eocdv.setUint16(8, files.length, true);   // entries on this disk
-  eocdv.setUint16(10, files.length, true);  // total entries
-  eocdv.setUint32(12, cdSize, true);        // CD size
-  eocdv.setUint32(16, offset, true);        // CD offset
-  eocdv.setUint16(20, 0, true);             // comment length
-
-  // 合并所有部分
-  const totalSize = offset + cdSize + 22;
-  const result = new Uint8Array(totalSize);
-  let pos = 0;
-  for (const p of parts) { result.set(p, pos); pos += p.length; }
-  for (const c of centralDir) { result.set(c, pos); pos += c.length; }
-  result.set(eocd, pos);
-  return result;
-}
-
-// 转义 XML 特殊字符
-function _bkEscXML(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// 列号转 Excel 列名 (0→A, 1→B, ..., 25→Z, 26→AA, ...)
-function _bkColIdxToName(idx) {
-  let n = idx, s = '';
-  while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
-  return s || 'A';
-}
-
-// CSV 文本 → xlsx 二进制数据 (Uint8Array)
-function bkCSVToXLSXBytes(csvText) {
-  // 1. 解析 CSV 为二维数组（复用已有分割函数）
-  const records = bkSplitCSVRecords(csvText);
-  if (records.length < 2) throw new Error('CSV 数据不足');
-
-  // 2. 智能定位表头行（同 bkParseCSVFile 的打分逻辑）
-  let headerIdx = 0, bestScore = 0;
-  for (let r = 0; r < records.length; r++) {
-    const low = (records[r] || []).join('|').toLowerCase();
-    let s = 0;
-    if (low.includes('交易时间')) s += 3;
-    if (low.includes('金额')) s += 2;
-    if (low.includes('收/支')) s += 2;
-    if (low.includes('交易对方')) s += 2;
-    if (low.includes('交易分类') || low.includes('交易类型')) s += 2;
-    if (low.includes('商品') || low.includes('商品说明')) s += 1;
-    if (s > bestScore) { bestScore = s; headerIdx = r; }
-  }
-  if (bestScore < 5 && records.length > 1) headerIdx = 0; // 兜底用第一行
-
-  // 3. 构建 sheet1.xml（inline string 模式）
-  const dataRows = records.slice(headerIdx);
-  let sheetXML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
-  for (let r = 0; r < dataRows.length; r++) {
-    const cells = dataRows[r];
-    sheetXML += '<row r="' + (r + 1) + '">';
-    for (let c = 0; c < cells.length; c++) {
-      const val = (cells[c] || '').trim();
-      const ref = _bkColIdxToName(c) + (r + 1);
-      if (val !== '') {
-        sheetXML += '<c r="' + ref + '" t="inlineStr"><is><t>' + _bkEscXML(val) + '</t></is></c>';
-      }
-    }
-    sheetXML += '</row>';
-  }
-  sheetXML += '</sheetData></worksheet>';
-
-  // 4. xlsx 内部文件清单
-  const files = [
-    { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>` },
-    { name: '_rels/.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
-    { name: 'xl/workbook.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>` },
-    { name: 'xl/_rels/workbook.xml.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>` },
-    { name: 'xl/worksheets/sheet1.xml', data: sheetXML }
-  ];
-
-  return bkBuildZIP(files);
 }
 
 
