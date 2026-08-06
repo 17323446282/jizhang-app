@@ -2346,10 +2346,8 @@ function formatDisplayDate(iso) {
 }
 
 function fmt(n) {
-  if (n == null || isNaN(n)) return '¥0';
-  const v = Math.round(Number(n));
-  const sign = v < 0 ? '-' : '';
-  return sign + '¥' + Math.abs(v).toLocaleString('en-US');
+  if (n == null || isNaN(n)) return '0';
+  return Math.round(Number(n)).toLocaleString('en-US');
 }
 
 function getCycleRange(refDate) {
@@ -2898,7 +2896,7 @@ function renderBillTable() {
       <td>${escHtml(b.summary)}</td>
       <td>${b.type==='income'?'<span class="tag-income">收入</span>':'<span class="tag-expense">支出</span>'}</td>
       <td><span class="tag-category">${escHtml(catName)}</span></td>
-      <td class="${b.type==='income'?'amount-income':'amount-expense'}">${b.type==='income'?'+':'-'}${fmt(b.amount)}</td>
+      <td class="${b.type==='income'?'amount-income':'amount-expense'}">${fmt(b.amount)}</td>
       <td style="color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(b.note)}</td>
       <td><button class="btn-delete" onclick="deleteBill('${b.id}')">删除</button></td>
     </tr>`;
@@ -3434,7 +3432,7 @@ function renderMonthlyBills(range) {
       <td>${escHtml(b.summary)}</td>
       <td>${b.type==='income'?'<span class="tag-income">收入</span>':'<span class="tag-expense">支出</span>'}</td>
       <td><span class="tag-category">${escHtml(catName)}</span></td>
-      <td class="${b.type==='income'?'amount-income':'amount-expense'}">${b.type==='income'?'+':'-'}${fmt(b.amount)}</td>
+      <td class="${b.type==='income'?'amount-income':'amount-expense'}">${fmt(b.amount)}</td>
     </tr>`;
   }).join('');
 }
@@ -4488,7 +4486,7 @@ function bkRenderDupGroups(bills) {
   container.innerHTML = Object.values(groups).map(g => `
     <div style="padding:10px 12px;background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;margin-bottom:8px">
       <div style="font-size:12px;color:#E65100;margin-bottom:6px">⚠️ 可能重复 (${g.length}条相同)</div>
-      ${g.map(b => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>${b.date} · ${escHtml(b.summary)}</span><span style="font-weight:600;color:var(--expense-red)">¥${fmt(b.amount)}</span></div>`).join('')}
+      ${g.map(b => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>${b.date} · ${escHtml(b.summary)}</span><span style="font-weight:600;color:var(--expense-red)">${fmt(b.amount)}</span></div>`).join('')}
     </div>`).join('');
 }
 
