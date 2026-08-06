@@ -4180,59 +4180,46 @@ class BitStream {
 }
 
 // --- 完整 DEFLATE 解压（支持动态 Huffman）---
-function fullInflate(compressed) {
+const CODELEN_ORDER = [16,17,18,0,8,7,9,10,11,12,13,14,1,2,3,4,5,6];
+function fullInflate(compressed, expectedSize) {
   const bits = new BitStream(compressed);
-  const outputParts = [];
-  let totalOut = 0;
-  const MAX_OUTPUT = compressed.length * 10;
+  const MAX_OUTPUT = Math.max(expectedSize || 0, compressed.length * 50) + 2048;
 
   // 构建 Huffman 表
   function buildHL(codeLengths) {
-    const maxLen = Math.max(...codeLengths, 0);
+    const maxLen = Math.max(0, ...codeLengths);
     if (maxLen === 0) return null;
-    const blCount = new Uint16Array(maxLen + 1);
+    const blCount = new Array(maxLen + 1).fill(0);
     for (const cl of codeLengths) if (cl > 0) blCount[cl]++;
+    // 标准 Canonical Huffman 解码表构建
+    const nextCode = new Array(maxLen + 1).fill(0);
     let code = 0;
-    const nextCode = new Uint32Array(maxLen + 1);
     for (let b = 1; b <= maxLen; b++) {
-      code = (code + blCount[b - 1]) << 1;
       nextCode[b] = code;
+      code = (code + blCount[b]) << 1;
     }
-    // 用数组存储 (codeValue, symbol) 对，按 code 排序后二分查找
     const entries = [];
     for (let i = 0; i < codeLengths.length; i++) {
       if (codeLengths[i] > 0) {
         entries.push({ code: nextCode[codeLengths[i]]++, len: codeLengths[i], sym: i });
-        nextCode[codeLengths[i]]--; // 回退因为上面多加了
       }
     }
-    // 修正 nextCode
-    code = 0;
-    const nc2 = new Uint32Array(maxLen + 1);
-    for (let b = 1; b <= maxLen; b++) {
-      code = (code + blCount[b - 1]) << 1;
-      nc2[b] = code;
-    }
-    entries.length = 0;
-    for (let i = 0; i < codeLengths.length; i++) {
-      if (codeLengths[i] > 0) {
-        entries.push({ code: nc2[codeLengths[i]]++, len: codeLengths[i], sym: i });
-      }
-    }
-    entries.sort((a,b) => a.len !== b.len ? a.len - b.len : a.code - b.code);
+    entries.sort((a, b) => (a.len !== b.len ? a.len - b.len : a.code - b.code));
     return { entries, maxLen };
   }
 
-  function decode(hf) {
+  function decode(hf, name) {
     let code = 0;
+    const isDbg = (name === 'clen');
     for (let len = 1; len <= hf.maxLen; len++) {
       code = (code << 1) | bits.readBit();
+      if (isDbg && len <= 6 && typeof console !== 'undefined' && console.error) console.error('DBG dec len='+len+' code='+code+' byte='+bits.bytePos+' bit='+bits.bitPos);
       // 线性搜索（对于小表够快）
       for (const e of hf.entries) {
         if (e.len === len && e.code === code) return e.sym;
       }
     }
-    throw new Error('Huffman 解码失败');
+    throw new Error('Huffman 解码失败 @byte=' + bits.bytePos + ' maxLen=' + hf.maxLen + ' code=' + code + ' table=' + name);
   }
 
   // 固定表
@@ -4275,20 +4262,25 @@ function fullInflate(compressed) {
 
       const clenArr = new Array(19).fill(0);
       for (let i = 0; i < hclen; i++) clenArr[CODELEN_ORDER[i]] = bits.readBits(3);
+      if (typeof console!=='undefined' && console.error) console.error('DBG hlit='+hlit+' hdist='+hdist+' hclen='+hclen+' JS_CLEN='+JSON.stringify(clenArr));
       const codeLenH = buildHL(clenArr);
+      if (typeof console!=='undefined' && console.error) console.error('DBG codeLenH entries='+JSON.stringify(codeLenH.entries)+' maxLen='+codeLenH.maxLen);
 
       // 解码码长序列
       const allLens = [];
       while (allLens.length < hlit + hdist) {
-        const s = decode(codeLenH);
+        const s = decode(codeLenH, 'clen');
+        if (typeof console !== 'undefined' && console.error && allLens.length < 12) console.error('DBG RLE step='+allLens.length+' s='+s);
         if (s < 16) {
           allLens.push(s);
         } else if (s === 16) {
           const rep = bits.readBits(2) + 3;
+          if (typeof console !== 'undefined' && console.error && allLens.length < 12) console.error('DBG   rep16='+rep);
           const last = allLens[allLens.length - 1];
           for (let r = 0; r < rep; r++) allLens.push(last);
         } else if (s === 17) {
           const rep = bits.readBits(3) + 3;
+          if (typeof console !== 'undefined' && console.error && allLens.length < 12) console.error('DBG   rep17='+rep);
           for (let r = 0; r < rep; r++) allLens.push(0);
         } else {
           const rep = bits.readBits(7) + 11;
@@ -4298,6 +4290,9 @@ function fullInflate(compressed) {
 
       litH = buildHL(allLens.slice(0, hlit));
       distH = buildHL(allLens.slice(hlit, hlit + hdist));
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('DBG allLens FULL='+JSON.stringify(allLens));
+      }
       decodeBlock(litH, distH);
     } else {
       throw new Error('保留块类型');
@@ -4306,7 +4301,7 @@ function fullInflate(compressed) {
 
   function decodeBlock(lH, dH) {
     while (true) {
-      const sym = decode(lH);
+      const sym = decode(lH, 'lit');
       if (sym < 256) {
         out[op++] = sym;
       } else if (sym === 256) {
@@ -4314,7 +4309,7 @@ function fullInflate(compressed) {
       } else {
         const li = sym - 257;
         const length = LB[li] + bits.readBits(LEB[li]);
-        const ds = decode(dH);
+        const ds = decode(dH, 'dist');
         const distance = DB[ds] + bits.readBits(DEB[ds]);
         let sp = op - distance;
         for (let j = 0; j < length; j++) {
@@ -4376,7 +4371,7 @@ function parseZIP(data) {
       entries[ent.name] = copy;
     } else if (ent.compression === 8) {
       try {
-        entries[ent.name] = fullInflate(copy);
+        entries[ent.name] = fullInflate(copy, ent.uncompSize);
       } catch (e) {
         console.warn('DEFLATE 解压失败:', ent.name, e.message);
       }
@@ -4484,20 +4479,20 @@ function bkConfirmSelected() {
   if (!toConfirm.length) { alert('请先勾选要入账的记录'); return; }
   if (!confirm(`确认将 ${toConfirm.length} 条记录入账？`)) return;
 
-  const bills = getBills();
+  const bills = state.bills;
   bills.push(...toConfirm.map(b => ({
     id: b.id, date: b.date, summary: b.summary,
     type: b.type, category: b.category,
     amount: b.amount, note: b.note || ''
   })));
-  saveBills(bills);
+  saveState();
 
   // 从待审列表移除
   _bkState.parsedBills = _bkState.parsedBills.filter(b => !b.checked);
   bkShowRecResults(_bkState.parsedBills);
   document.getElementById('statPending').textContent = _bkState.parsedBills.length;
 
-  renderBills();
+  renderBookkeeping();
   alert(`✅ 已成功入账 ${toConfirm.length} 条记录！`);
 }
 
