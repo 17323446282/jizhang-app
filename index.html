@@ -609,6 +609,20 @@ body {
 }
 .btn-delete:hover { color: var(--expense-red); border-color: var(--expense-red); }
 
+/* ===== 批量删除（仅记账页最近账单） ===== */
+.bk-batch-btn { font-size: 12px; padding: 5px 12px; }
+.bill-table .bk-sel-col { display: none; width: 38px; text-align: center; padding-left: 8px; padding-right: 8px; }
+.bill-table .bk-sel-col input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--color-primary); }
+.bill-table.in-select .bk-sel-col { display: table-cell; }
+.bill-table.in-select .bk-op-col { display: none; }
+.bk-batch-bar {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 14px; padding: 12px 16px;
+  background: #FCEBEA; border: 1px solid rgba(226,75,74,0.25); border-radius: 10px;
+}
+.bk-batch-bar .btn-danger { background: var(--expense-red); color: #fff; border-color: var(--expense-red); }
+.bk-batch-bar .btn-danger:hover { opacity: 0.9; }
+
 /* ===== Bookkeeping Page: New Layout (Stats + 3 Cards + Actions) ===== */
 .bk-stats-bar {
   display: grid;
@@ -1998,13 +2012,22 @@ input[type="number"] { -moz-appearance: textfield; }
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
               最近账单
             </span>
-            <span style="font-size:12px;color:var(--text-muted)" id="billCountBadge"></span>
+            <span style="display:flex;align-items:center;gap:10px;">
+              <button type="button" class="btn btn-sm bk-batch-btn" id="batchDelBtn" onclick="toggleBillSelectMode()">批量删除</button>
+              <span style="font-size:12px;color:var(--text-muted)" id="billCountBadge"></span>
+            </span>
           </div>
           <div class="bill-table-wrap">
             <table class="bill-table" id="billTable">
-              <thead><tr><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th>操作</th></tr></thead>
+              <thead><tr><th class="bk-sel-col"><input type="checkbox" id="selAllChk" onchange="toggleBillSelectAll(this)" aria-label="全选"></th><th>日期</th><th>摘要</th><th>类型</th><th>类别</th><th>金额</th><th>备注</th><th class="bk-op-col">操作</th></tr></thead>
               <tbody id="billTableBody"></tbody>
             </table>
+          </div>
+          <div class="bk-batch-bar hidden" id="batchBar">
+            <span id="batchSelInfo" style="font-size:13px;font-weight:600;color:var(--expense-red)">已选 0 条</span>
+            <span style="flex:1"></span>
+            <button type="button" class="btn btn-sm" onclick="toggleBillSelectMode(false)">取消</button>
+            <button type="button" class="btn btn-sm btn-danger" onclick="deleteSelectedBills()">删除选中 <span id="batchCount">0</span> 条</button>
           </div>
           <div class="empty-state hidden" id="billsEmpty">
             <svg class="brand-illus" width="96" height="96" viewBox="0 0 120 120" fill="none" style="opacity:.92" aria-hidden="true">
@@ -3031,12 +3054,24 @@ function deleteBill(id) {
   });
 }
 
+let billSelectMode = false;
+let selectedBillIds = {};
+
 function renderBillTable() {
   const tbody = document.getElementById('billTableBody');
   const empty = document.getElementById('billsEmpty');
   const badge = document.getElementById('billCountBadge');
+  const table = document.getElementById('billTable');
+  const batchBar = document.getElementById('batchBar');
+  const batchDelBtn = document.getElementById('batchDelBtn');
 
   badge.textContent = `共 ${state.bills.length} 条`;
+
+  // 同步选择模式 UI
+  if (table) table.classList.toggle('in-select', billSelectMode);
+  if (batchDelBtn) batchDelBtn.textContent = billSelectMode ? '退出批量' : '批量删除';
+  if (batchBar) batchBar.classList.toggle('hidden', !billSelectMode);
+  updateBatchInfo();
 
   if (state.bills.length === 0) {
     tbody.innerHTML = '';
@@ -3050,16 +3085,71 @@ function renderBillTable() {
     const catName = b.type === 'income'
       ? (INCOME_CATEGORIES.find(c=>c.key===b.category)||{}).name || b.category
       : (EXPENSE_CATEGORIES.find(c=>c.key===b.category)||{}).name || b.category;
+    const chk = billSelectMode
+      ? `<td class="bk-sel-col"><input type="checkbox" data-id="${b.id}" ${selectedBillIds[b.id]?'checked':''} onchange="onBillChkChange('${b.id}',this.checked)"></td>`
+      : '';
     return `<tr>
+      ${chk}
       <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="date" ondblclick="bkBeginEdit(this)" title="双击修改">${formatDisplayDate(b.date)}</td>
       <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="summary" ondblclick="bkBeginEdit(this)" title="双击修改">${escHtml(b.summary)}</td>
       <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="type" ondblclick="bkBeginEdit(this)" title="双击修改">${b.type==='income'?'<span class="tag-income">收入</span>':'<span class="tag-expense">支出</span>'}</td>
       <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="category" ondblclick="bkBeginEdit(this)" title="双击修改"><span class="tag-category">${escHtml(catName)}</span></td>
       <td class="bk-editable ${b.type==='income'?'amount-income':'amount-expense'}" data-tbl="bill" data-id="${b.id}" data-field="amount" ondblclick="bkBeginEdit(this)" title="双击修改">${fmt(b.amount)}</td>
       <td class="bk-editable" data-tbl="bill" data-id="${b.id}" data-field="note" ondblclick="bkBeginEdit(this)" title="双击修改" style="color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(b.note)}</td>
-      <td><button class="btn-delete" onclick="deleteBill('${b.id}')">删除</button></td>
+      <td class="bk-op-col"><button class="btn-delete" onclick="deleteBill('${b.id}')">删除</button></td>
     </tr>`;
   }).join('');
+}
+
+function getVisibleBills() {
+  return [...state.bills].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 50);
+}
+
+function updateBatchInfo() {
+  const n = Object.keys(selectedBillIds).filter(k => selectedBillIds[k]).length;
+  const info = document.getElementById('batchSelInfo');
+  const cnt = document.getElementById('batchCount');
+  const selAll = document.getElementById('selAllChk');
+  if (info) info.textContent = `已选 ${n} 条`;
+  if (cnt) cnt.textContent = n;
+  if (selAll) {
+    const visible = getVisibleBills();
+    const allSel = visible.length > 0 && visible.every(b => selectedBillIds[b.id]);
+    const someSel = visible.some(b => selectedBillIds[b.id]);
+    selAll.checked = allSel;
+    selAll.indeterminate = !allSel && someSel;
+  }
+}
+
+function toggleBillSelectMode(force) {
+  billSelectMode = (typeof force === 'boolean') ? force : !billSelectMode;
+  if (!billSelectMode) selectedBillIds = {};
+  renderBillTable();
+}
+
+function toggleBillSelectAll(chk) {
+  getVisibleBills().forEach(b => { selectedBillIds[b.id] = chk.checked; });
+  renderBillTable();
+}
+
+function onBillChkChange(id, checked) {
+  selectedBillIds[id] = checked;
+  updateBatchInfo();
+}
+
+function deleteSelectedBills() {
+  const ids = Object.keys(selectedBillIds).filter(k => selectedBillIds[k]);
+  if (ids.length === 0) { alert('请先勾选要删除的账单'); return; }
+  if (!confirm(`确定删除选中的 ${ids.length} 条账单吗？\n此操作不可恢复！`)) return;
+  const idSet = new Set(ids);
+  const before = state.bills.length;
+  state.bills = state.bills.filter(b => !idSet.has(b.id));
+  saveState();
+  selectedBillIds = {};
+  billSelectMode = false;
+  renderBookkeeping();
+  checkDataWarning();
+  alert(`已删除 ${before - state.bills.length} 条账单`);
 }
 
 function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
