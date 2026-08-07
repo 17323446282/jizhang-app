@@ -1294,6 +1294,58 @@ body {
 }
 .custom-range-input:focus { border-color: var(--color-primary); }
 
+/* ===== 年度复盘页面 ===== */
+.yr-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.yr-metric-card {
+  background: #fff; border-radius: var(--radius-md);
+  padding: 18px 16px; border: 1px solid var(--border-color);
+  text-align: center;
+}
+.yr-metric-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.yr-metric-value { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+.yr-metric-value.inc { color: var(--income-green); }
+.yr-metric-value.exp { color: var(--expense-red); }
+.yr-metric-value.bal { color: var(--color-primary-dark); }
+
+.yr-charts-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  margin-bottom: 18px;
+}
+.yr-chart-card { min-height: 220px; }
+.yr-pie-wrap { display:flex; align-items:center; gap:20px; padding:10px 0; }
+.yr-pie-wrap svg { width:160px; height:160px; flex-shrink:0; }
+.yr-legend { font-size:12px; line-height:1.9; flex:1; min-width:0; }
+.yr-legend-item { display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden;text-overflow:ellipsis; }
+.yr-legend-dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+
+/* 年度透视表 */
+.yr-pivot-table {
+  width:100%; border-collapse:collapse; font-size:12px; min-width:900px;
+}
+.yr-pivot-table th, .yr-pivot-table td {
+  padding:7px 10px; border:1px solid #eee; text-align:right; white-space:nowrap;
+}
+.yr-pivot-table th {
+  background:#FAFAFA; font-weight:500; color:var(--text-secondary);
+  position:sticky; top:0; z-index:2;
+}
+.yr-pivot-table .yr-row-label { text-align:left; position:sticky; left:0; background:#fff; z-index:1; font-weight:500; }
+.yr-pivot-table .yr-section-header { background:#F8F4EE !important; font-weight:600; color:var(--text-primary); }
+.yr-pivot-table .yr-total-col { background:#FFF9F5 !important; font-weight:600; }
+.yr-pivot-table .yr-grand-total { background:#FBEAF0 !important; font-weight:700; color:var(--expense-red); }
+.yr-pivot-table tr:hover td:not(.yr-row-label) { background:#FCFAF9; }
+
+@media (max-width: 768px) {
+  .yr-metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .yr-charts-row { grid-template-columns: 1fr; }
+  .yr-pie-wrap { flex-direction: column; }
+}
+
 /* ===== Modal / Dialog ===== */
 .modal-overlay {
   display: none;
@@ -1764,10 +1816,9 @@ input[type="number"] { -moz-appearance: textfield; }
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       月度收支
     </a></li>
-    <li class="nav-item"><a class="nav-link disabled" data-page="yearly">
+    <li class="nav-item"><a class="nav-link" data-page="yearly" onclick="switchPage('yearly')">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>
       年度复盘
-      <span style="font-size:10px;margin-left:auto;opacity:0.5;">待迭代</span>
     </a></li>
     <li class="nav-item"><a class="nav-link disabled" data-page="invest">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -2213,6 +2264,79 @@ input[type="number"] { -moz-appearance: textfield; }
   <!-- Toast（页面级浮层，置于 pages 之外以保证可见） -->
   <div class="rec-toast" id="recToast"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 7"/></svg><span id="recToastMsg"></span></div>
 
+  <!-- ========== PAGE: YEARLY ========== -->
+  <div class="page" id="page-yearly">
+    <div class="page-header">
+      <h2>年度复盘</h2>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <select id="yearSelect" onchange="onYearChange()" style="font-size:14px;padding:6px 10px;border:1px solid var(--border-color);border-radius:8px;background:#fff;color:var(--text-primary);cursor:pointer;">
+        </select>
+        <button type="button" class="btn btn-sm" onclick="toggleYearCustomRange()" title="自选日期范围">📆 自选范围</button>
+      </div>
+    </div>
+
+    <!-- 年度指标卡（5个） -->
+    <div class="yr-metrics-grid" id="yrMetricsGrid"></div>
+
+    <!-- 饼图行：收入 + 支出 -->
+    <div class="yr-charts-row">
+      <div class="card yr-chart-card">
+        <div class="card-title">全年收入分类</div>
+        <div class="yr-pie-wrap">
+          <svg id="yrIncomePie" viewBox="0 0 200 200"></svg>
+          <div id="yrIncomeLegend" class="yr-legend"></div>
+        </div>
+      </div>
+      <div class="card yr-chart-card">
+        <div class="card-title">全年支出分类</div>
+        <div class="yr-pie-wrap">
+          <svg id="yrExpensePie" viewBox="0 0 200 200"></svg>
+          <div id="yrExpenseLegend" class="yr-legend"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 月度趋势折线图 -->
+    <div class="card">
+      <div class="card-title">月度收支趋势</div>
+      <div style="overflow-x:auto;">
+        <svg id="yrTrendChart" viewBox="0 0 800 260" style="width:100%;min-width:700px;"></svg>
+      </div>
+    </div>
+
+    <!-- 透视表：类别 × 月份 -->
+    <div class="card">
+      <div class="card-title flex-between">
+        <span>年度分类明细表</span>
+        <span style="font-size:12px;color:var(--text-muted)" id="yrTableRange"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="yr-pivot-table" id="yrPivotTable"></table>
+      </div>
+    </div>
+
+    <!-- 大额支出 Top500 -->
+    <div class="card">
+      <div class="card-title">本年度大额支出 Top500</div>
+      <div style="max-height:500px;overflow-y:auto;">
+        <table class="bill-table" id="yrTopExpensesTable">
+          <thead><tr><th>#</th><th>日期</th><th>摘要</th><th>类别</th><th>金额</th></tr></thead>
+          <tbody id="yrTopExpensesBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 自选范围面板 -->
+    <div class="custom-range-panel hidden" id="yrCustomPanel" style="margin-top:12px;">
+      <label class="custom-range-label">从</label>
+      <input type="date" class="custom-range-input" id="yrCustomStart">
+      <label class="custom-range-label">至</label>
+      <input type="date" class="custom-range-input" id="yrCustomEnd">
+      <button class="btn btn-primary btn-sm" type="button" onclick="applyYearCustomRange()">确定</button>
+      <button class="btn btn-sm" type="button" onclick="toggleYearCustomRange(false)">取消</button>
+    </div>
+  </div>
+
   <!-- ========== PAGE: SETTINGS ========== -->
   <div class="page" id="page-settings">
     <div class="page-header"><h2>设置</h2></div>
@@ -2307,6 +2431,10 @@ alter table finance_sync disable row level security;</span><br>
   <button class="mobile-tab" data-page="monthly" onclick="switchPage('monthly')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     月度收支
+  </button>
+  <button class="mobile-tab" data-page="yearly" onclick="switchPage('yearly')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>
+    年度复盘
   </button>
   <button class="mobile-tab" data-page="settings" onclick="switchPage('settings')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -2626,6 +2754,7 @@ function switchPage(pageName) {
   if (pageName === 'overview') renderOverview();
   else if (pageName === 'bookkeeping') renderBookkeeping();
   else if (pageName === 'monthly') renderMonthly();
+  else if (pageName === 'yearly') renderYearly();
   else if (pageName === 'settings') renderSettings();
 }
 
@@ -3987,6 +4116,348 @@ async function pullFromSupabase() {
     setSync('offline');
     setSyncError('同步失败：' + (e && e.message ? e.message : '网络错误'));
   }
+}
+
+// ============================================================
+// YEARLY PAGE (年度复盘)
+// ============================================================
+
+let yrStart = null, yrEnd = null; // 自选范围
+let yrCustomMode = false;
+
+function renderYearly() {
+  buildYearSelect();
+  if (!yrCustomMode) setDefaultYearRange();
+  renderYearlyAll();
+}
+
+function buildYearSelect() {
+  var sel = document.getElementById('yearSelect');
+  if (!sel) return;
+  var years = getBillYears();
+  sel.innerHTML = '';
+  var curYr = new Date().getFullYear();
+  years.forEach(function(y) {
+    var o = document.createElement('option'); o.value = y;
+    o.textContent = y + '年'; if (y === curYr) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!years.length) { var o = document.createElement('option'); o.value = curYr; o.textContent = curYr + '年'; sel.appendChild(o); }
+}
+
+function getBillYears() {
+  var s = new Set();
+  state.bills.forEach(function(b) {
+    var d = b.date; if (d.length >= 4) s.add(parseInt(d.substring(0,4)));
+  });
+  return Array.from(s).sort(function(a,b){return a-b});
+}
+
+function setDefaultYearRange() {
+  var y = parseInt(document.getElementById('yearSelect').value) || new Date().getFullYear();
+  yrStart = new Date(y, 0, 1);
+  yrEnd = new Date(y, 11, 31);
+  yrCustomMode = false;
+}
+
+function onYearChange() {
+  yrCustomMode = false;
+  setDefaultYearRange();
+  renderYearlyAll();
+}
+
+function toggleYearCustomRange(force) {
+  var panel = document.getElementById('yrCustomPanel');
+  var open = (typeof force === 'boolean') ? force : !panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  if (open) {
+    var sEl = document.getElementById('yrCustomStart'), eEl = document.getElementById('yrCustomEnd');
+    sEl.value = formatDateISO(yrStart || new Date(new Date().getFullYear(),0,1));
+    eEl.value = formatDateISO(yrEnd || new Date());
+  }
+}
+
+function applyYearCustomRange() {
+  var s = document.getElementById('yrCustomStart').value;
+  var e = document.getElementById('yrCustomEnd').value;
+  if (!s || !e) { alert('请选择起止日期'); return; }
+  yrStart = new Date(s + 'T00:00:00');
+  yrEnd = new Date(e + 'T00:00:00');
+  if (yrEnd < yrStart) { alert('结束日期不能早于开始日期'); return; }
+  yrCustomMode = true;
+  toggleYearCustomRange(false);
+  renderYearlyAll();
+}
+
+function renderYearlyAll() {
+  var range = { start: yrStart, end: yrEnd };
+  renderYrMetrics(range);
+  renderYrPieCharts(range);
+  renderYrTrendChart(range);
+  renderYrPivotTable(range);
+  renderYrTopExpenses(range);
+  updateYrTableRange();
+}
+
+function updateYrTableRange() {
+  var el = document.getElementById('yrTableRange');
+  if (el) el.textContent = formatDateISO(yrStart) + ' — ' + formatDateISO(yrEnd);
+}
+
+// ---- 指标卡 ----
+function renderYrMetrics(range) {
+  var bills = getBillsInRange(formatDateISO(range.start), formatDateISO(range.end));
+  var inc = 0, exp = 0;
+  bills.forEach(function(b) { if (b.type === 'income') inc += parseFloat(b.amount)||0; else exp += parseFloat(b.amount)||0; });
+  var bal = inc - exp;
+  var fixedDep = parseFloat(state.goals.yearlyTarget)||0;
+  var liquid = bal - fixedDep;
+
+  var cards = [
+    { label:'本年总收入', value:inc, cls:'inc' },
+    { label:'本年总支出', value:exp, cls:'exp' },
+    { label:'本年结余', value:bal, cls:bal>=0?'bal':'exp' },
+    { label:'定存目标', value:fixedDep, cls:'bal' },
+    { label:'流动资金', value:liquid, cls:liquid>=0?'bal':'exp' }
+  ];
+  var grid = document.getElementById('yrMetricsGrid');
+  if (!grid) return;
+  grid.innerHTML = cards.map(function(c){
+    return '<div class="yr-metric-card"><div class="yr-metric-label">'+c.label+'</div><div class="yr-metric-value '+c.cls+'">¥'+fmt(c.value)+'</div></div>';
+  }).join('');
+}
+
+// ---- 饼图（内联 SVG） ----
+function renderYrPieCharts(range) {
+  var bills = getBillsInRange(formatDateISO(range.start), formatDateISO(range.end));
+  drawYrPie('yrIncomePie', 'yrIncomeLegend', bills.filter(function(b){return b.type==='income';}), INCOME_CATEGORIES, true);
+  drawYrPie('yrExpensePie', 'yrExpenseLegend', bills.filter(function(b){return b.type==='expense';}), EXPENSE_CATEGORIES, false);
+}
+
+function drawYrPie(svgId, legendId, bills, categories, isIncome) {
+  var svg = document.getElementById(svgId); var leg = document.getElementById(legendId);
+  if (!svg || !leg) return;
+  var totals = {};
+  categories.forEach(function(c){ totals[c.key] = 0; });
+  bills.forEach(function(b){
+    var k = b.category || '';
+    if (!(k in totals)) k = isIncome ? 'other_income' : 'other_expense';
+    totals[k] = (totals[k]||0) + (parseFloat(b.amount)||0);
+  });
+  var data = categories.map(function(c){ return { key:c.key, name:c.name, val:totals[c.key]||0 }; }).filter(function(d){return d.val>0;}).sort(function(a,b){return b.val-a.val;});
+
+  svg.innerHTML = ''; leg.innerHTML = '';
+  if (!data.length) { svg.innerHTML='<text x="100" y="105" text-anchor="middle" fill="#999" font-size="13">暂无数据</text>'; return; }
+
+  var total = data.reduce(function(s,d){return s+d.val;},0) || 1;
+  var colors = ['#D4A0A5','#E8B4A6','#F5C9A8','#C9D8C0','#A7C7D8','#B8A9C9','#D4C5A0','#E0AFA0','#A0C4D4','#C4A0D4'];
+  var cx=100,cy=100,r=80;
+  var accum = -Math.PI/2;
+  var paths = [];
+  data.forEach(function(d,i){
+    var angle = (d.val/total)*Math.PI*2;
+    var endAngle = accum + angle;
+    var x1=cx+r*Math.cos(accum), y1=cy+r*Math.sin(accum);
+    var x2=cx+r*Math.cos(endAngle), y2=cy+r*Math.sin(endAngle);
+    var largeArc = angle > Math.PI ? 1 : 0;
+    var color = colors[i%colors.length];
+    paths.push('<path d="M'+cx+','+cy+' L'+x1+','+y1+' A'+r+','+r+' 0 '+largeArc+',1 '+x2+','+y2+' Z" fill="'+color+'" stroke="#fff" stroke-width="1.5"/>');
+    // legend
+    leg.innerHTML += '<div class="yr-legend-item"><span class="yr-legend-dot" style="background:'+color+'"></span><span>'+escHtml(d.name)+' ¥'+fmt(d.val)+' ('+(d.val*100/total).toFixed(1)+'%)</span></div>';
+    accum = endAngle;
+  });
+  // center hole for donut
+  paths.push('<circle cx="'+cx+'" cy="'+cy+'" r="40" fill="#fff"/>');
+  var fillClr = isIncome ? 'var(--income-green)' : 'var(--expense-red)';
+  paths.push('<text x="'+cx+'" y="'+cy+'" text-anchor="middle" dominant-baseline="middle" font-size="14" font-weight="700" fill="'+fillClr+'">¥'+fmt(total)+'</text>');
+  svg.innerHTML = paths.join('');
+}
+
+// ---- 月度趋势折线图 ----
+function renderYrTrendChart(range) {
+  var svg = document.getElementById('yrTrendChart');
+  if (!svg) return;
+  var months = getMonthsInRange(range.start, range.end);
+  var incArr=[], expArr=[];
+  months.forEach(function(m){
+    var ms = m.s, me = m.e;
+    var bs = getBillsInRange(ms, me);
+    var inc=0,exp=0;
+    bs.forEach(function(b){ if(b.type==='income') inc+=parseFloat(b.amount)||0; else exp+=parseFloat(b.amount)||0; });
+    incArr.push(inc); expArr.push(exp);
+  });
+
+  var W=800, H=260, padL=50, padR=30, padT=20, padB=40;
+  var chartW=W-padL-padR, chartH=H-padT-padB;
+  var maxVal = Math.max(Math.max.apply(null,incArr.concat(expArr)), 100);
+  var niceMax = Math.ceil(maxVal/10000)*10000 || 10000;
+
+  // grid lines
+  var gridLines = '';
+  for(var i=0;i<=5;i++){
+    var y = padT + chartH - (i/5)*chartH;
+    gridLines += '<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#eee" stroke-width="1"/>';
+    gridLines += '<text x="'+(padL-8)+'" y="'+(y+4)+'" text-anchor="end" font-size="10" fill="#999">'+fmt(niceMax*i/5)+'</text>';
+  }
+
+  // month labels & bars
+  var barW = Math.min(30, chartW/months.length * 0.35);
+  var gap = chartW / months.length;
+  var bars='', labels='';
+  months.forEach(function(m,i){
+    var cx = padL + i*gap + gap/2;
+    labels += '<text x="'+cx+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="#999">'+m.label+'</text>';
+    // expense bar
+    var eh = (expArr[i]/niceMax)*chartH;
+    var ey = padT + chartH - eh;
+    bars += '<rect x="'+(cx-barW-2)+'" y="'+ey+'" width="'+barW+'" height="'+eh+'" fill="rgba(226,75,74,0.55)" rx="2"/>';
+    // income bar
+    var ih = (incArr[i]/niceMax)*chartH;
+    var iy = padT + chartH - ih;
+    bars += '<rect x="'+(cx+2)+'" y="'+iy+'" width="'+barW+'" height="'+ih+'" fill="rgba(93,202,165,0.55)" rx="2"/>';
+  });
+
+  // line: income
+  var incLinePts = months.map(function(m,i){
+    var cx = padL + i*gap + gap/2;
+    var iy = padT + chartH - (incArr[i]/niceMax)*chartH;
+    return cx+','+iy;
+  }).join(' ');
+  var incLine = '<polyline points="'+incLinePts+'" fill="none" stroke="var(--income-green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
+  // line: expense
+  var expLinePts = months.map(function(m,i){
+    var cx = padL + i*gap + gap/2;
+    var ey = padT + chartH - (expArr[i]/niceMax)*chartH;
+    return cx+','+ey;
+  }).join(' ');
+  var expLine = '<polyline points="'+expLinePts+'" fill="none" stroke="var(--expense-red)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  // dots
+  var incDots = months.map(function(m,i){
+    var cx = padL + i*gap + gap/2;
+    var iy = padT + chartH - (incArr[i]/niceMax)*chartH;
+    return '<circle cx="'+cx+'" cy="'+iy+'" r="3" fill="var(--income-green)"/>';
+  }).join('');
+  var expDots = months.map(function(m,i){
+    var cx = padL + i*gap + gap/2;
+    var ey = padT + chartH - (expArr[i]/niceMax)*chartH;
+    return '<circle cx="'+cx+'" cy="'+ey+'" r="3" fill="var(--expense-red)"/>';
+  }).join('');
+
+  // legend
+  var legendHTML = '<rect x="'+(W-180)+'" y="8" width="12" height="12" rx="2" fill="rgba(93,202,165,0.65)"/><text x="'+(W-164)+'" y="18" font-size="11" fill="#666">收入</text>';
+  legendHTML += '<rect x="'+(W-110)+'" y="8" width="12" height="12" rx="2" fill="rgba(226,75,74,0.65)"/><text x="'+(W-94)+'" y="18" font-size="11" fill="#666">支出</text>';
+
+  svg.innerHTML = gridLines + bars + incLine + expLine + incDots + expDots + labels + legendHTML;
+}
+
+function getMonthsInRange(start, end) {
+  var result = [];
+  var d = new Date(start.getFullYear(), start.getMonth(), 1);
+  var endM = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (d <= endM) {
+    var y = d.getFullYear(), m = d.getMonth();
+    var nm = new Date(y, m+1, 0);
+    result.push({
+      s: y + '-' + String(m+1).padStart(2,'0') + '-01',
+      e: y + '-' + String(m+1).padStart(2,'0') + '-' + String(nm.getDate()).padStart(2,'0'),
+      label: (m+1)+'月'
+    });
+    d.setMonth(m+1);
+  }
+  return result;
+}
+
+// ---- 透视表：类别 × 月份 ----
+function renderYrPivotTable(range) {
+  var table = document.getElementById('yrPivotTable');
+  if (!table) return;
+  var months = getMonthsInRange(range.start, range.end);
+
+  // build matrix
+  function sumCat(catKey, type, ms, me) {
+    var bs = getBillsInRange(ms, me);
+    var t=0; bs.forEach(function(b){ if(b.category===catKey&&b.type===type) t+=parseFloat(b.amount)||0; }); return t;
+  }
+
+  // header row
+  var h = '<thead><tr><th class="yr-row-label">分类</th>';
+  months.forEach(function(m){ h+='<th>'+m.label+'</th>'; });
+  h+='<th class="yr-total-col">全年总汇</th></tr></thead>';
+
+  // income rows
+  var body = '<tbody>';
+  body += '<tr><td class="yr-row-label yr-section-header" colspan="'+(months.length+2)+'">收入</td></tr>';
+  INCOME_CATEGORIES.forEach(function(cat){
+    var rowTotal=0;
+    var cells = months.map(function(m){
+      var v=sumCat(cat.key,'income',m.s,m.e); rowTotal+=v;
+      return '<td>'+(v?fmt(v):'')+'</td>';
+    }).join('');
+    body += '<tr><td class="yr-row-label">'+escHtml(cat.name)+'</td>'+cells+'<td class="yr-total-col">'+(rowTotal?fmt(rowTotal):'')+'</td></tr>';
+  });
+  // month total income
+  var miRow=''; var miGrand=0;
+  months.forEach(function(m){
+    var bs=getBillsInRange(m.s,m.e); var t=0; bs.forEach(function(b){if(b.type==='income')t+=parseFloat(b.amount)||0;}); miGrand+=t;
+    miRow+='<td class="yr-total-col">'+(t?fmt(t):'')+'</td>';
+  });
+  body += '<tr><td class="yr-row-label yr-total-col">月总收入</td>'+miRow+'<td class="yr-grand-total">'+(miGrand?fmt(miGrand):'')+'</td></tr>';
+
+  // expense rows
+  body += '<tr><td class="yr-row-label yr-section-header" colspan="'+(months.length+2)+'">支出</td></tr>';
+  EXPENSE_CATEGORIES.forEach(function(cat){
+    var rowTotal=0;
+    var cells = months.map(function(m){
+      var v=sumCat(cat.key,'expense',m.s,m.e); rowTotal+=v;
+      return '<td>'+(v?fmt(v):'')+'</td>';
+    }).join('');
+    body += '<tr><td class="yr-row-label">'+escHtml(cat.name)+'</td>'+cells+'<td class="yr-total-col">'+(rowTotal?fmt(rowTotal):'')+'</td></tr>';
+  });
+  // month total expense
+  var meRow=''; var meGrand=0;
+  months.forEach(function(m){
+    var bs=getBillsInRange(m.s,m.e); var t=0; bs.forEach(function(b){if(b.type==='expense')t+=parseFloat(b.amount)||0;}); meGrand+=t;
+    meRow+='<td class="yr-total-col">'+(t?fmt(t):'')+'</td>';
+  });
+  body += '<tr><td class="yr-row-label yr-total-col">月总支出</td>'+meRow+'<td class="yr-grand-total">'+(meGrand?fmt(meGrand):'')+'</td></tr>';
+
+  // balance row
+  var balRow=''; var balGrand=0;
+  months.forEach(function(m){
+    var bs=getBillsInRange(m.s,m.e); var inc=0,exp=0;
+    bs.forEach(function(b){if(b.type==='income')inc+=parseFloat(b.amount)||0;else exp+=parseFloat(b.amount)||0;});
+    var b=inc-exp; balGrand+=b;
+    balRow+='<td class="'+(b>=0?'':'style="color:var(--expense-red)"')+'">'+(b?fmt(b):'')+'</td>';
+  });
+  body += '<tr><td class="yr-row-label yr-grand-total">月结余</td>'+balRow+'<td class="yr-grand-total">'+(balGrand?fmt(balGrand):'')+'</td></tr>';
+
+  body += '</tbody>';
+  table.innerHTML = h + body;
+}
+
+// ---- 大额支出 Top500 ----
+function renderYrTopExpenses(range) {
+  var tbody = document.getElementById('yrTopExpensesBody');
+  if (!tbody) return;
+  var bills = getBillsInRange(formatDateISO(range.start), formatDateISO(range.end))
+    .filter(function(b){ return b.type === 'expense'; })
+    .sort(function(a,b){ return (parseFloat(b.amount)||0) - (parseFloat(b.amount)||0); })
+    .reverse()
+    .slice(0, 500);
+
+  if (!bills.length) { tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:#999;padding:24px;">暂无支出记录</td></tr>'; return; }
+
+  tbody.innerHTML = bills.map(function(b,i){
+    var catName = (EXPENSE_CATEGORIES.find(function(c){return c.key===b.category})||{}).name||b.category;
+    return '<tr>'+
+      '<td>'+(i+1)+'</td>'+
+      '<td>'+formatDisplayDate(b.date)+'</td>'+
+      '<td>'+escHtml(b.summary)+'</td>'+
+      '<td><span class="tag-category">'+escHtml(catName)+'</span></td>'+
+      '<td class="amount-expense">'+fmt(b.amount)+'</td>'+
+    '</tr>';
+  }).join('');
 }
 
 // ===== Settings Page =====
