@@ -2296,14 +2296,6 @@ input[type="number"] { -moz-appearance: textfield; }
       </div>
     </div>
 
-    <!-- 月度趋势折线图 -->
-    <div class="card">
-      <div class="card-title">月度收支趋势</div>
-      <div style="overflow-x:auto;">
-        <svg id="yrTrendChart" viewBox="0 0 800 260" style="width:100%;min-width:700px;"></svg>
-      </div>
-    </div>
-
     <!-- 透视表：类别 × 月份 -->
     <div class="card">
       <div class="card-title flex-between">
@@ -4193,7 +4185,7 @@ function renderYearlyAll() {
   var range = { start: yrStart, end: yrEnd };
   renderYrMetrics(range);
   renderYrPieCharts(range);
-  renderYrTrendChart(range);
+  // 趋势图已移除（用户要求删除）
   renderYrPivotTable(range);
   renderYrTopExpenses(range);
   updateYrTableRange();
